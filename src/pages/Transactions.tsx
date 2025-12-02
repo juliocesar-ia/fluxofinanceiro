@@ -18,6 +18,8 @@ import { Plus, Search, Filter, ArrowUpDown, Trash2, Pencil } from "lucide-react"
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useTheme } from "@/components/theme-provider";
+import { useNavigate } from "react-router-dom";
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -90,23 +92,36 @@ export default function TransactionsPage() {
 
     if (!user) return;
 
+    // Pega os valores do formulário
+    const accountId = formData.get('account_id')?.toString();
+    const categoryId = formData.get('category_id')?.toString();
+
+    // Validação simples
+    if (!accountId || accountId === "default") {
+       toast({ title: "Selecione uma conta!", variant: "destructive" });
+       return;
+    }
+    if (!categoryId || categoryId === "default") {
+       toast({ title: "Selecione uma categoria!", variant: "destructive" });
+       return;
+    }
+
     const newTransaction = {
       user_id: user.id,
       description: formData.get('description'),
       amount: Number(formData.get('amount')),
       type: formData.get('type'),
       date: formData.get('date'),
-      account_id: formData.get('account_id'), // Novo campo
-      // Se você ainda não migrou a tabela categories, use category_text
-      // category_id: formData.get('category_id') 
-      category: "Padrão" // Temporário até atualizar o form completo
+      account_id: accountId,
+      category_id: categoryId, // Agora salvamos o ID da relação
+      category: "Personalizada" // Mantemos o campo antigo preenchido para não quebrar compatibilidade
     };
 
     const { error } = await supabase.from('transactions').insert(newTransaction);
 
     if (error) {
       console.error(error);
-      toast({ title: "Erro ao salvar", variant: "destructive" });
+      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Transação salva com sucesso!" });
       setIsDialogOpen(false);
@@ -158,6 +173,24 @@ export default function TransactionsPage() {
                   <Label>Descrição</Label>
                   <Input name="description" placeholder="Ex: Supermercado Semanal" required />
                 </div>
+                <div className="space-y-2">
+  <Label>Categoria</Label>
+  <Select name="category_id">
+    <SelectTrigger>
+      <SelectValue placeholder="Selecione" />
+    </SelectTrigger>
+    <SelectContent>
+      {categories.length > 0 ? categories.map(cat => (
+        <SelectItem key={cat.id} value={cat.id}>
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color || '#ccc' }} />
+            {cat.name}
+          </div>
+        </SelectItem>
+      )) : <SelectItem value="default" disabled>Nenhuma categoria criada</SelectItem>}
+    </SelectContent>
+  </Select>
+</div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -165,6 +198,7 @@ export default function TransactionsPage() {
                     <Input type="date" name="date" defaultValue={new Date().toISOString().split('T')[0]} required />
                   </div>
                   <div className="space-y-2">
+
                     <Label>Conta</Label>
                     <Select name="account_id">
                       <SelectTrigger>

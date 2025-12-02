@@ -10,6 +10,7 @@ import NotFound from "./pages/NotFound";
 import EmailConfirmation from "./pages/EmailConfirmation";
 import { ThemeProvider } from "@/components/theme-provider"
 import TransactionsPage from "./pages/Transactions";
+import AccountsPage from "./pages/Accounts";
 
 const queryClient = new QueryClient();
 
