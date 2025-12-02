@@ -1,31 +1,71 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Wallet, Mail, Lock, User, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulação de autenticação (será implementado com Supabase)
-    setTimeout(() => {
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get("email") as string;
+    const password = formData.get("password") as string;
+    const name = formData.get("name") as string;
+
+    try {
+      if (isLogin) {
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (error) throw error;
+
+        toast({
+          title: "Login realizado!",
+          description: "Bem-vindo de volta!",
+        });
+        navigate("/dashboard");
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/dashboard`,
+            data: {
+              full_name: name,
+            },
+          },
+        });
+
+        if (error) throw error;
+
+        toast({
+          title: "Cadastro realizado!",
+          description: "Sua conta foi criada com sucesso. Aproveite os 5 dias grátis!",
+        });
+        navigate("/dashboard");
+      }
+    } catch (error: any) {
       toast({
-        title: isLogin ? "Login realizado!" : "Cadastro realizado!",
-        description: isLogin 
-          ? "Bem-vindo de volta!"
-          : "Sua conta foi criada com sucesso. Aproveite os 5 dias grátis!",
+        title: "Erro",
+        description: error.message || "Ocorreu um erro. Tente novamente.",
+        variant: "destructive",
       });
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -85,6 +125,7 @@ export default function Auth() {
                 </Label>
                 <Input
                   id="name"
+                  name="name"
                   type="text"
                   placeholder="Seu nome"
                   required={!isLogin}
@@ -100,6 +141,7 @@ export default function Auth() {
               </Label>
               <Input
                 id="email"
+                name="email"
                 type="email"
                 placeholder="seu@email.com"
                 required
@@ -114,6 +156,7 @@ export default function Auth() {
               </Label>
               <Input
                 id="password"
+                name="password"
                 type="password"
                 placeholder="Mínimo 6 caracteres"
                 required

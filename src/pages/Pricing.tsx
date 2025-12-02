@@ -5,25 +5,6 @@ import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Check, ArrowRight } from "lucide-react";
 
-async function createCheckout() {
-  const user = (await supabase.auth.getUser()).data.user;
-
-  const res = await fetch(
-    "https://YOUR_SUPABASE_URL/functions/v1/create-checkout",
-    {
-      method: "POST",
-      body: JSON.stringify({ userId: user.id }),
-      headers: { "Content-Type": "application/json" },
-    }
-  );
-
-  const data = await res.json();
-  window.location.href = data.url;
-}
-<button onClick={createCheckout} className="bg-purple-600 px-4 py-2 rounded-xl">
-  Assinar por R$ 9,90/mês
-</button>
-
 export default function Pricing() {
   const features = [
     "Dashboard completo com gráficos",
