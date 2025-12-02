@@ -31,14 +31,6 @@ export const Navbar = () => {
             >
               Início
             </Link>
-            <Link
-              to="/pricing"
-              className={`text-sm font-medium transition-colors hover:text-primary ${
-                isActive("/pricing") ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
-              Preços
-            </Link>
             <Link to="/auth">
               <Button variant="outline" size="sm">
                 Entrar
@@ -46,7 +38,7 @@ export const Navbar = () => {
             </Link>
             <Link to="/auth">
               <Button size="sm" className="bg-gradient-to-r from-primary to-primary/90">
-                Começar Grátis
+                Acessar Sistema
               </Button>
             </Link>
           </div>

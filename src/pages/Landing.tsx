@@ -33,19 +33,11 @@ export default function Landing() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Link to="/auth">
                 <Button size="lg" className="text-lg px-8 h-14 bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary group">
-                  Começar Grátis - 5 Dias
+                Criar Conta Gratuita
                   <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
                 </Button>
               </Link>
-              <Link to="/pricing">
-                <Button size="lg" variant="outline" className="text-lg px-8 h-14">
-                  Ver Preços
-                </Button>
-              </Link>
             </div>
-            <p className="text-sm text-muted-foreground mt-4">
-              Apenas R$ 9,90/mês após o período grátis • Cancele quando quiser
-            </p>
           </div>
         </div>
       </section>
@@ -136,7 +128,7 @@ export default function Landing() {
             Comece hoje mesmo a organizar suas finanças
           </h2>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Experimente grátis por 5 dias e descubra como é simples ter o controle total
+            Crie sua conta gratuita e descubra como é simples ter o controle total
             do seu dinheiro.
           </p>
           <Link to="/auth">
