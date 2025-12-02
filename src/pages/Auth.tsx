@@ -61,7 +61,7 @@ export default function Auth() {
 
         toast({
           title: "Cadastro realizado!",
-          description: "Sua conta foi criada com sucesso. Aproveite os 5 dias grátis!",
+          description: "Sua conta foi criada com sucesso. Verifique seu e-mail para confirmar.",
         });
         navigate("/dashboard");
       }
