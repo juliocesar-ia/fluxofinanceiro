@@ -12,9 +12,20 @@ import {
   Zap,
   Smartphone,
 } from "lucide-react";
-
+import { useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 export default function Landing() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate("/dashboard");
+      }
+    });
+  }, [navigate]);
   return (
+    
     <div className="min-h-screen bg-background">
       <Navbar />
 
