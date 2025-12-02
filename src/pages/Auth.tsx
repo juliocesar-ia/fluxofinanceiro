@@ -50,7 +50,7 @@ export default function Auth() {
           email,
           password,
           options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`,
+            emailRedirectTo: `${window.location.origin}/email-confirmed`,
             data: {
               full_name: name,
             },
