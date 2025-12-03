@@ -4,12 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Bot, Sparkles } from "lucide-react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Tenta pegar do .env, mas permite fallback (substitua a string vazia se quiser testar hardcoded)
+// Pega a chave do arquivo .env
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 
 type Message = {
@@ -80,13 +80,14 @@ export default function AIAdvisorPage() {
     setIsTyping(true);
 
     try {
-      // Verificação de segurança para debug
       if (!API_KEY || API_KEY.length < 10) {
         throw new Error("Chave de API ausente ou inválida. Verifique o arquivo .env");
       }
 
       const genAI = new GoogleGenerativeAI(API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-pro"});
+      
+      // --- MUDANÇA AQUI: Trocamos "gemini-pro" por "gemini-1.5-flash" ---
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash"});
 
       const prompt = `
         Você é um consultor financeiro pessoal chamado FinancePro AI.
@@ -115,11 +116,12 @@ export default function AIAdvisorPage() {
     } catch (error: any) {
       console.error("Erro IA:", error);
       
-      // Mostra o erro real para facilitar o diagnóstico
       let errorMsg = "Erro de conexão.";
       if (error.message) errorMsg = `Erro: ${error.message}`;
-      if (error.toString().includes("400")) errorMsg = "Erro 400: Chave Inválida ou Requisição mal formada.";
-      if (error.toString().includes("429")) errorMsg = "Erro 429: Muitos pedidos (Cota excedida).";
+      
+      // Tratamento para erros comuns
+      if (error.toString().includes("404")) errorMsg = "Erro 404: Modelo não encontrado. Atualize para 'gemini-1.5-flash'.";
+      if (error.toString().includes("400")) errorMsg = "Erro 400: Chave Inválida.";
       
       setMessages(prev => [...prev, { 
         id: (Date.now()+1).toString(), 
@@ -141,7 +143,7 @@ export default function AIAdvisorPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">AI Advisor</h1>
             <p className="text-muted-foreground flex items-center gap-2">
-              <Sparkles className="h-3 w-3 text-yellow-500" /> Assistente Inteligente
+              <Sparkles className="h-3 w-3 text-yellow-500" /> Inteligência Artificial Real
             </p>
           </div>
         </div>
@@ -161,7 +163,7 @@ export default function AIAdvisorPage() {
                   </div>
                 </div>
               ))}
-              {isTyping && <div className="text-xs text-muted-foreground animate-pulse ml-12">Analisando finanças...</div>}
+              {isTyping && <div className="text-xs text-muted-foreground animate-pulse ml-12">Analisando...</div>}
               <div ref={scrollRef} />
             </div>
           </ScrollArea>
