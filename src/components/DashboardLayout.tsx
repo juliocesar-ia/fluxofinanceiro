@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { 
   LayoutDashboard, Wallet, CreditCard, PieChart, 
   Target, Settings, LogOut, Menu, Bell, Repeat, Calendar, TrendingUp,
-  BrainCircuit, Calculator, User, Check
+  BrainCircuit, Calculator, User, Check, X
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -24,9 +24,11 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import { Badge } from "./ui/badge";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobileOpen, setIsMobileOpen] = useState(false); // Estado para o menu mobile
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -37,7 +39,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     fetchUserData();
     fetchNotifications();
     
-    // Inscreve-se para atualizações em tempo real (opcional)
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
@@ -47,6 +48,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     return () => { supabase.removeChannel(channel); };
   }, []);
+
+  // Fecha o menu mobile sempre que mudar de rota
+  useEffect(() => {
+    setIsMobileOpen(false);
+  }, [location.pathname]);
 
   const fetchUserData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -94,9 +100,46 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { icon: Settings, label: "Configurações", path: "/dashboard/settings" },
   ];
 
+  // Componente de Navegação (Reutilizável para Desktop e Mobile)
+  const NavigationContent = () => (
+    <div className="flex flex-col h-full">
+      <div className="h-16 flex items-center justify-center border-b border-border">
+        <span className="text-xl font-bold bg-gradient-to-r from-primary to-orange-600 bg-clip-text text-transparent">
+          FinancePro
+        </span>
+      </div>
+
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        {menuItems.map((item) => (
+          <Link key={item.path} to={item.path}>
+            <Button 
+              variant={location.pathname === item.path ? "secondary" : "ghost"} 
+              className="w-full justify-start"
+            >
+              <item.icon className="h-5 w-5 mr-2" />
+              <span>{item.label}</span>
+            </Button>
+          </Link>
+        ))}
+      </nav>
+
+      <div className="p-4 border-t border-border space-y-2">
+        <div className="flex items-center justify-between">
+           <span className="text-xs text-muted-foreground">Tema</span>
+           <ModeToggle />
+        </div>
+        <Button variant="outline" className="w-full" onClick={handleLogout}>
+          <LogOut className="h-4 w-4 mr-2" />
+          Sair
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-background text-foreground flex">
-      {/* Sidebar Desktop */}
+      
+      {/* --- SIDEBAR DESKTOP --- */}
       <aside 
         className={`fixed inset-y-0 left-0 z-50 bg-card border-r border-border transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'} hidden md:flex flex-col`}
       >
@@ -128,23 +171,44 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              {isSidebarOpen && <span className="text-xs text-muted-foreground">Tema</span>}
              <ModeToggle />
           </div>
+          {isSidebarOpen && (
+            <Button variant="outline" className="w-full" onClick={handleLogout}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Sair
+            </Button>
+          )}
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'md:ml-20'}`}>
+      {/* --- CONTEÚDO PRINCIPAL --- */}
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'md:ml-20'} w-full`}>
         {/* Header */}
-        <header className="h-16 bg-card/50 backdrop-blur border-b border-border flex items-center justify-between px-6 sticky top-0 z-40">
+        <header className="h-16 bg-card/50 backdrop-blur border-b border-border flex items-center justify-between px-4 sticky top-0 z-40">
           <div className="flex items-center gap-4">
+            
+            {/* Botão Mobile (Menu Hambúrguer) */}
+            <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="p-0 w-72">
+                <NavigationContent />
+              </SheetContent>
+            </Sheet>
+
+            {/* Botão Desktop (Colapsar) */}
             <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="hidden md:flex">
               <Menu className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-semibold capitalize">
+
+            <h1 className="text-lg font-semibold capitalize truncate max-w-[150px] sm:max-w-none">
               {menuItems.find(i => i.path === location.pathname)?.label || "Dashboard"}
             </h1>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {/* Notificações */}
             <Popover>
               <PopoverTrigger asChild>
@@ -155,7 +219,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   )}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-80 p-0" align="end">
+              <PopoverContent className="w-80 p-0 mr-2" align="end">
                 <div className="p-4 border-b font-semibold flex justify-between items-center">
                   Notificações
                   {unreadCount > 0 && <Badge variant="secondary">{unreadCount} novas</Badge>}
@@ -163,7 +227,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <ScrollArea className="h-[300px]">
                   {notifications.length === 0 ? (
                     <div className="p-8 text-center text-muted-foreground text-sm">
-                      Nenhuma notificação por enquanto.
+                      Nenhuma notificação.
                     </div>
                   ) : (
                     <div className="divide-y">
@@ -204,8 +268,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <DropdownMenuContent className="w-56" align="end" forceMount>
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium leading-none">{userProfile?.full_name || "Usuário"}</p>
-                    <p className="text-xs leading-none text-muted-foreground">
+                    <p className="text-sm font-medium leading-none truncate">{userProfile?.full_name || "Usuário"}</p>
+                    <p className="text-xs leading-none text-muted-foreground truncate">
                       Minha Conta
                     </p>
                   </div>
@@ -230,7 +294,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-6 overflow-auto">
+        <main className="flex-1 p-4 sm:p-6 overflow-auto w-full max-w-[100vw] overflow-x-hidden">
           {children}
         </main>
       </div>
