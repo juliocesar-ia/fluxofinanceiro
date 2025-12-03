@@ -10,7 +10,7 @@ import { Send, Bot, Sparkles } from "lucide-react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Tenta pegar do .env
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const API_KEY = "AIzaSyCGLJlRTs9I4VhOp7NJil2hYlV7V4hH6h4";
 
 type Message = {
   id: string;
