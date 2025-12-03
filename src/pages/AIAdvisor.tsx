@@ -4,12 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, Bot, Sparkles } from "lucide-react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-// Pega a chave do arquivo .env
+// Tenta pegar do .env
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 
 type Message = {
@@ -80,14 +80,14 @@ export default function AIAdvisorPage() {
     setIsTyping(true);
 
     try {
-      if (!API_KEY || API_KEY.length < 10) {
-        throw new Error("Chave de API ausente ou inválida. Verifique o arquivo .env");
+      if (!API_KEY) {
+        throw new Error("Chave de API ausente. Verifique o arquivo .env");
       }
 
       const genAI = new GoogleGenerativeAI(API_KEY);
       
-      // --- MUDANÇA AQUI: Trocamos "gemini-pro" por "gemini-1.5-flash" ---
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash"});
+      // --- AQUI ESTAVA O ERRO: Mudei para o modelo correto ---
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const prompt = `
         Você é um consultor financeiro pessoal chamado FinancePro AI.
@@ -118,10 +118,7 @@ export default function AIAdvisorPage() {
       
       let errorMsg = "Erro de conexão.";
       if (error.message) errorMsg = `Erro: ${error.message}`;
-      
-      // Tratamento para erros comuns
-      if (error.toString().includes("404")) errorMsg = "Erro 404: Modelo não encontrado. Atualize para 'gemini-1.5-flash'.";
-      if (error.toString().includes("400")) errorMsg = "Erro 400: Chave Inválida.";
+      if (error.toString().includes("404")) errorMsg = "Erro: Modelo 'gemini-pro' não existe mais. Atualize o código.";
       
       setMessages(prev => [...prev, { 
         id: (Date.now()+1).toString(), 
@@ -143,7 +140,7 @@ export default function AIAdvisorPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">AI Advisor</h1>
             <p className="text-muted-foreground flex items-center gap-2">
-              <Sparkles className="h-3 w-3 text-yellow-500" /> Inteligência Artificial Real
+              <Sparkles className="h-3 w-3 text-yellow-500" /> Assistente Inteligente
             </p>
           </div>
         </div>
