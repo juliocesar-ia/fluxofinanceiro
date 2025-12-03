@@ -86,7 +86,7 @@ export default function AIAdvisorPage() {
 
       const genAI = new GoogleGenerativeAI(API_KEY);
       
-      // --- AQUI ESTAVA O ERRO: Mudei para o modelo correto ---
+      // --- MODELO CORRIGIDO AQUI: gemini-1.5-flash ---
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const prompt = `
@@ -118,7 +118,7 @@ export default function AIAdvisorPage() {
       
       let errorMsg = "Erro de conexão.";
       if (error.message) errorMsg = `Erro: ${error.message}`;
-      if (error.toString().includes("404")) errorMsg = "Erro: Modelo 'gemini-pro' não existe mais. Atualize o código.";
+      if (error.toString().includes("404")) errorMsg = "Erro: Modelo não encontrado ou chave inválida.";
       
       setMessages(prev => [...prev, { 
         id: (Date.now()+1).toString(), 

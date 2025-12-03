@@ -19,7 +19,7 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const { setTheme, theme } = useTheme();
 
-  // Estados
+  // Estados Perfil
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -55,22 +55,19 @@ export default function SettingsPage() {
       const fileExt = file.name.split('.').pop();
       const filePath = `${user.id}-${Math.random()}.${fileExt}`;
 
-      // Upload para Storage
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(filePath, file);
 
       if (uploadError) throw uploadError;
 
-      // Pegar URL Pública
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
 
-      // Atualizar perfil (CORREÇÃO AQUI: onConflict)
       const { error: updateError } = await supabase
         .from('profiles')
         .upsert(
           { user_id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() },
-          { onConflict: 'user_id' } // <--- ESSA LINHA CORRIGE O ERRO
+          { onConflict: 'user_id' }
         );
 
       if (updateError) throw updateError;
@@ -78,7 +75,6 @@ export default function SettingsPage() {
       setAvatarUrl(publicUrl);
       toast({ title: "Foto atualizada com sucesso!" });
       
-      // Pequeno delay para recarregar e mostrar a foto nova no menu
       setTimeout(() => window.location.reload(), 1000);
 
     } catch (error: any) {
@@ -92,19 +88,50 @@ export default function SettingsPage() {
     e.preventDefault();
     setLoading(true);
     
-    // Atualiza tabela profiles (CORREÇÃO AQUI: onConflict)
     const { error } = await supabase.from('profiles').upsert(
       { 
         user_id: user.id, 
         full_name: fullName,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString() 
       },
-      { onConflict: 'user_id' } // <--- ESSA LINHA CORRIGE O ERRO
+      { onConflict: 'user_id' }
     );
 
     if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
     else toast({ title: "Perfil atualizado!" });
     
+    setLoading(false);
+  };
+
+  // --- NOVA FUNÇÃO DE TROCA DE SENHA ---
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    const formData = new FormData(e.target as HTMLFormElement);
+    const password = formData.get("password") as string;
+    const confirmPassword = formData.get("confirm_password") as string;
+
+    if (password !== confirmPassword) {
+      toast({ title: "As senhas não coincidem", variant: "destructive" });
+      setLoading(false);
+      return;
+    }
+
+    if (password.length < 6) {
+      toast({ title: "A senha deve ter no mínimo 6 caracteres", variant: "destructive" });
+      setLoading(false);
+      return;
+    }
+
+    // Atualiza a senha do usuário logado
+    const { error } = await supabase.auth.updateUser({ password: password });
+
+    if (error) {
+      toast({ title: "Erro ao atualizar senha", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Senha atualizada com sucesso!", description: "Use a nova senha no próximo login." });
+      (e.target as HTMLFormElement).reset(); // Limpa o formulário
+    }
     setLoading(false);
   };
 
@@ -169,19 +196,51 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="security" className="mt-6">
+          {/* --- ABA SEGURANÇA ATUALIZADA --- */}
+          <TabsContent value="security" className="mt-6 space-y-6">
              <Card>
                 <CardHeader>
-                   <CardTitle>Segurança</CardTitle>
-                   <CardDescription>Proteja sua conta.</CardDescription>
+                   <CardTitle>Alterar Senha</CardTitle>
+                   <CardDescription>Defina uma nova senha para sua conta.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                   <p className="text-muted-foreground text-sm">Para trocar sua senha, enviamos um e-mail seguro.</p>
-                   <Button variant="outline" className="mt-4" onClick={() => toast({title: "Funcionalidade disponível na tela de login"})}>
-                      Trocar Senha
-                   </Button>
+                   <form onSubmit={handlePasswordChange} className="space-y-4">
+                      <div className="space-y-2">
+                         <Label htmlFor="password">Nova Senha</Label>
+                         <Input id="password" name="password" type="password" placeholder="Digite a nova senha" required />
+                      </div>
+                      <div className="space-y-2">
+                         <Label htmlFor="confirm_password">Confirmar Nova Senha</Label>
+                         <Input id="confirm_password" name="confirm_password" type="password" placeholder="Confirme a senha" required />
+                      </div>
+                      <Button type="submit" disabled={loading}>
+                        {loading ? "Atualizando..." : "Atualizar Senha"}
+                      </Button>
+                   </form>
                 </CardContent>
              </Card>
+
+             <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-primary" /> Autenticação de Dois Fatores (2FA)
+                </CardTitle>
+                <CardDescription>Adicione uma camada extra de segurança.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                <div className="flex items-center justify-between rounded-lg border p-4">
+                  <div className="space-y-0.5">
+                    <div className="font-medium flex items-center gap-2">
+                      <Smartphone className="h-4 w-4" /> Aplicativo Autenticador
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Em breve disponível.
+                    </div>
+                  </div>
+                  <Switch disabled />
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="appearance" className="mt-6">
