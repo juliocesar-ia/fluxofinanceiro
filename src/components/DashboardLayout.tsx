@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { 
   LayoutDashboard, Wallet, CreditCard, PieChart, 
   Target, Settings, LogOut, Menu, Bell, Repeat, Calendar, TrendingUp,
-  BrainCircuit, Calculator, User, Check, X
+  Calculator, User, X // Removi o BrainCircuit daqui
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -28,7 +28,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [isMobileOpen, setIsMobileOpen] = useState(false); // Estado para o menu mobile
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -49,7 +49,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  // Fecha o menu mobile sempre que mudar de rota
   useEffect(() => {
     setIsMobileOpen(false);
   }, [location.pathname]);
@@ -88,7 +87,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const menuItems = [
     { icon: LayoutDashboard, label: "Visão Geral", path: "/dashboard" },
-    { icon: BrainCircuit, label: "AI Advisor", path: "/dashboard/advisor" },
+    // Removi o item da IA aqui
     { icon: Wallet, label: "Transações", path: "/dashboard/transactions" },
     { icon: Calculator, label: "Planejamento", path: "/dashboard/planning" },
     { icon: Calendar, label: "Calendário", path: "/dashboard/calendar" },
@@ -100,7 +99,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { icon: Settings, label: "Configurações", path: "/dashboard/settings" },
   ];
 
-  // Componente de Navegação (Reutilizável para Desktop e Mobile)
   const NavigationContent = () => (
     <div className="flex flex-col h-full">
       <div className="h-16 flex items-center justify-center border-b border-border">
@@ -138,8 +136,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
-      
-      {/* --- SIDEBAR DESKTOP --- */}
       <aside 
         className={`fixed inset-y-0 left-0 z-50 bg-card border-r border-border transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'} hidden md:flex flex-col`}
       >
@@ -180,13 +176,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </aside>
 
-      {/* --- CONTEÚDO PRINCIPAL --- */}
       <div className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'md:ml-20'} w-full`}>
-        {/* Header */}
         <header className="h-16 bg-card/50 backdrop-blur border-b border-border flex items-center justify-between px-4 sticky top-0 z-40">
           <div className="flex items-center gap-4">
-            
-            {/* Botão Mobile (Menu Hambúrguer) */}
             <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="md:hidden">
@@ -198,7 +190,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </SheetContent>
             </Sheet>
 
-            {/* Botão Desktop (Colapsar) */}
             <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="hidden md:flex">
               <Menu className="h-5 w-5" />
             </Button>
@@ -209,7 +200,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Notificações */}
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative">
@@ -253,7 +243,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </PopoverContent>
             </Popover>
 
-            {/* Menu de Perfil */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -293,7 +282,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </header>
 
-        {/* Page Content */}
         <main className="flex-1 p-4 sm:p-6 overflow-auto w-full max-w-[100vw] overflow-x-hidden">
           {children}
         </main>

@@ -17,10 +17,10 @@ import ReportsPage from "./pages/Reports";
 import CalendarPage from "./pages/Calendar";
 import InvestmentsPage from "./pages/Investments";
 import SettingsPage from "./pages/Settings";
-import PlanningPage from "./pages/Planning"; // <--- NOVO
-import AIAdvisorPage from "./pages/AIAdvisor"; // <--- NOVO
+import PlanningPage from "./pages/Planning";
 import NotFound from "./pages/NotFound";
 import EmailConfirmation from "./pages/EmailConfirmation";
+// Removido o import do AIAdvisor
 
 const queryClient = new QueryClient();
 
@@ -46,8 +46,9 @@ const App = () => (
             <Route path="/dashboard/calendar" element={<CalendarPage />} />
             <Route path="/dashboard/investments" element={<InvestmentsPage />} />
             <Route path="/dashboard/settings" element={<SettingsPage />} />
-            <Route path="/dashboard/planning" element={<PlanningPage />} /> {/* <--- ROTA NOVA */}
-            <Route path="/dashboard/advisor" element={<AIAdvisorPage />} /> {/* <--- ROTA NOVA */}
+            <Route path="/dashboard/planning" element={<PlanningPage />} />
+            
+            {/* Removida a rota /dashboard/advisor */}
             
             <Route path="*" element={<NotFound />} />
           </Routes>
