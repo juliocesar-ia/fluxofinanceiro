@@ -65,17 +65,20 @@ export default function SettingsPage() {
       // Pegar URL Pública
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
 
-      // Atualizar perfil
+      // Atualizar perfil (CORREÇÃO AQUI: onConflict)
       const { error: updateError } = await supabase
         .from('profiles')
-        .upsert({ user_id: user.id, avatar_url: publicUrl, updated_at: new Date() });
+        .upsert(
+          { user_id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id' } // <--- ESSA LINHA CORRIGE O ERRO
+        );
 
       if (updateError) throw updateError;
 
       setAvatarUrl(publicUrl);
       toast({ title: "Foto atualizada com sucesso!" });
       
-      // Forçar recarregamento da página para atualizar o header (solução simples)
+      // Pequeno delay para recarregar e mostrar a foto nova no menu
       setTimeout(() => window.location.reload(), 1000);
 
     } catch (error: any) {
@@ -89,11 +92,15 @@ export default function SettingsPage() {
     e.preventDefault();
     setLoading(true);
     
-    const { error } = await supabase.from('profiles').upsert({ 
-      user_id: user.id, 
-      full_name: fullName,
-      updated_at: new Date()
-    });
+    // Atualiza tabela profiles (CORREÇÃO AQUI: onConflict)
+    const { error } = await supabase.from('profiles').upsert(
+      { 
+        user_id: user.id, 
+        full_name: fullName,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'user_id' } // <--- ESSA LINHA CORRIGE O ERRO
+    );
 
     if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
     else toast({ title: "Perfil atualizado!" });
@@ -162,7 +169,6 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* ... Conteúdos de Segurança e Aparência (iguais ao anterior, mantidos por completude) ... */}
           <TabsContent value="security" className="mt-6">
              <Card>
                 <CardHeader>
