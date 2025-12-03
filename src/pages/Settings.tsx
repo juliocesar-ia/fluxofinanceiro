@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, Shield, Smartphone, Moon, Sun, Monitor, Upload, Loader2 } from "lucide-react";
+import { User, Shield, Smartphone, Moon, Sun, Monitor, Upload, Loader2, Tag, Plus, Trash2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 
@@ -24,8 +25,15 @@ export default function SettingsPage() {
   const [email, setEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
+  // Estados Categorias
+  const [categories, setCategories] = useState<any[]>([]);
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatType, setNewCatType] = useState<"income" | "expense">("expense");
+  const [newCatColor, setNewCatColor] = useState("#808080");
+
   useEffect(() => {
     getProfile();
+    fetchCategories();
   }, []);
 
   const getProfile = async () => {
@@ -44,41 +52,89 @@ export default function SettingsPage() {
     }
   };
 
+  const fetchCategories = async () => {
+    const { data } = await supabase.from('categories').select('*').order('name');
+    if (data) setCategories(data);
+  };
+
+  // --- CATEGORIAS ---
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName) return;
+
+    const { error } = await supabase.from('categories').insert({
+      user_id: user.id,
+      name: newCatName,
+      type: newCatType,
+      color: newCatColor
+    });
+
+    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+    else {
+      toast({ title: "Categoria criada!" });
+      setNewCatName("");
+      fetchCategories();
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (!confirm("Excluir categoria?")) return;
+    const { error } = await supabase.from('categories').delete().eq('id', id);
+    if (!error) { toast({ title: "Removida" }); fetchCategories(); }
+  };
+
+  const handleSeedCategories = async () => {
+    setLoading(true);
+    const defaults = [
+      { name: 'Alimentação', type: 'expense', color: '#ef4444' },
+      { name: 'Transporte', type: 'expense', color: '#f97316' },
+      { name: 'Lazer', type: 'expense', color: '#8b5cf6' },
+      { name: 'Moradia', type: 'expense', color: '#3b82f6' },
+      { name: 'Saúde', type: 'expense', color: '#ef4444' },
+      { name: 'Educação', type: 'expense', color: '#14b8a6' },
+      { name: 'Salário', type: 'income', color: '#22c55e' },
+      { name: 'Investimento', type: 'income', color: '#0ea5e9' },
+    ];
+
+    const toInsert = defaults.map(d => ({ ...d, user_id: user.id }));
+    
+    const { error } = await supabase.from('categories').insert(toInsert);
+    
+    if (error) toast({ title: "Erro ao gerar", description: "Talvez algumas já existam.", variant: "destructive" });
+    else {
+      toast({ title: "Categorias Padrão Criadas!" });
+      fetchCategories();
+    }
+    setLoading(false);
+  };
+
+  // --- PERFIL & OUTROS ---
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setUploading(true);
-      if (!event.target.files || event.target.files.length === 0) {
-        throw new Error('Você deve selecionar uma imagem para upload.');
-      }
+      if (!event.target.files || event.target.files.length === 0) throw new Error('Selecione uma imagem.');
 
       const file = event.target.files[0];
       const fileExt = file.name.split('.').pop();
       const filePath = `${user.id}-${Math.random()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file);
-
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file);
       if (uploadError) throw uploadError;
 
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
 
       const { error: updateError } = await supabase
         .from('profiles')
-        .upsert(
-          { user_id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() },
-          { onConflict: 'user_id' }
-        );
+        .upsert({ user_id: user.id, avatar_url: publicUrl, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
 
       if (updateError) throw updateError;
 
       setAvatarUrl(publicUrl);
-      toast({ title: "Foto atualizada com sucesso!" });
-      
+      toast({ title: "Foto atualizada!" });
       setTimeout(() => window.location.reload(), 1000);
 
     } catch (error: any) {
-      toast({ title: "Erro no upload", description: error.message, variant: "destructive" });
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -87,23 +143,15 @@ export default function SettingsPage() {
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
     const { error } = await supabase.from('profiles').upsert(
-      { 
-        user_id: user.id, 
-        full_name: fullName,
-        updated_at: new Date().toISOString() 
-      },
+      { user_id: user.id, full_name: fullName, updated_at: new Date().toISOString() },
       { onConflict: 'user_id' }
     );
-
-    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+    if (error) toast({ title: "Erro", variant: "destructive" });
     else toast({ title: "Perfil atualizado!" });
-    
     setLoading(false);
   };
 
-  // --- NOVA FUNÇÃO DE TROCA DE SENHA ---
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -112,25 +160,15 @@ export default function SettingsPage() {
     const confirmPassword = formData.get("confirm_password") as string;
 
     if (password !== confirmPassword) {
-      toast({ title: "As senhas não coincidem", variant: "destructive" });
+      toast({ title: "Senhas não conferem", variant: "destructive" });
       setLoading(false);
       return;
     }
-
-    if (password.length < 6) {
-      toast({ title: "A senha deve ter no mínimo 6 caracteres", variant: "destructive" });
-      setLoading(false);
-      return;
-    }
-
-    // Atualiza a senha do usuário logado
     const { error } = await supabase.auth.updateUser({ password: password });
-
-    if (error) {
-      toast({ title: "Erro ao atualizar senha", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Senha atualizada com sucesso!", description: "Use a nova senha no próximo login." });
-      (e.target as HTMLFormElement).reset(); // Limpa o formulário
+    if (error) toast({ title: "Erro", description: error.message, variant: "destructive" });
+    else {
+      toast({ title: "Senha atualizada!" });
+      (e.target as HTMLFormElement).reset();
     }
     setLoading(false);
   };
@@ -140,13 +178,74 @@ export default function SettingsPage() {
       <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
 
-        <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+        <Tabs defaultValue="categories" className="w-full">
+          <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
             <TabsTrigger value="profile">Perfil</TabsTrigger>
+            <TabsTrigger value="categories">Categorias</TabsTrigger>
             <TabsTrigger value="security">Segurança</TabsTrigger>
-            <TabsTrigger value="appearance">Aparência</TabsTrigger>
+            <TabsTrigger value="appearance">Visual</TabsTrigger>
           </TabsList>
 
+          {/* --- ABA CATEGORIAS (NOVA) --- */}
+          <TabsContent value="categories" className="mt-6 space-y-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Gerenciar Categorias</CardTitle>
+                  <CardDescription>Crie rótulos para organizar suas transações.</CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleSeedCategories} disabled={loading}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  Restaurar Padrões
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Form Nova Categoria */}
+                <form onSubmit={handleCreateCategory} className="flex gap-4 items-end p-4 bg-muted/30 rounded-lg border">
+                  <div className="flex-1 space-y-2">
+                    <Label>Nome</Label>
+                    <Input placeholder="Ex: Mercado" value={newCatName} onChange={e => setNewCatName(e.target.value)} required />
+                  </div>
+                  <div className="w-[140px] space-y-2">
+                    <Label>Tipo</Label>
+                    <Select value={newCatType} onValueChange={(v: any) => setNewCatType(v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="expense">Despesa</SelectItem>
+                        <SelectItem value="income">Receita</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-[100px] space-y-2">
+                    <Label>Cor</Label>
+                    <Input type="color" value={newCatColor} onChange={e => setNewCatColor(e.target.value)} className="h-10 p-1 cursor-pointer" />
+                  </div>
+                  <Button type="submit"><Plus className="h-4 w-4" /></Button>
+                </form>
+
+                {/* Lista de Categorias */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {categories.map(cat => (
+                    <div key={cat.id} className="flex items-center justify-between p-3 border rounded-md hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="h-4 w-4 rounded-full" style={{ backgroundColor: cat.color }} />
+                        <span className="font-medium">{cat.name}</span>
+                        <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded capitalize">{cat.type === 'expense' ? 'Despesa' : 'Receita'}</span>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDeleteCategory(cat.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  {categories.length === 0 && (
+                    <div className="col-span-2 text-center text-muted-foreground py-8">Nenhuma categoria encontrada.</div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* --- ABA PERFIL --- */}
           <TabsContent value="profile" className="mt-6 space-y-6">
             <Card>
               <CardHeader>
@@ -196,7 +295,7 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* --- ABA SEGURANÇA ATUALIZADA --- */}
+          {/* --- ABA SEGURANÇA --- */}
           <TabsContent value="security" className="mt-6 space-y-6">
              <Card>
                 <CardHeader>
@@ -243,6 +342,7 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
+          {/* --- ABA VISUAL --- */}
           <TabsContent value="appearance" className="mt-6">
             <Card>
               <CardHeader><CardTitle>Tema</CardTitle></CardHeader>
