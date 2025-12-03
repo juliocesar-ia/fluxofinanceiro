@@ -1,19 +1,79 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   LayoutDashboard, Wallet, CreditCard, PieChart, 
   Target, Settings, LogOut, Menu, Bell, Repeat, Calendar, TrendingUp,
-  BrainCircuit, Calculator // <--- NOVOS ÍCONES
+  BrainCircuit, Calculator, User, Check
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { ModeToggle } from "./ModeToggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
+import { Badge } from "./ui/badge";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetchUserData();
+    fetchNotifications();
+    
+    // Inscreve-se para atualizações em tempo real (opcional)
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
+        fetchNotifications();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const fetchUserData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data } = await supabase.from('profiles').select('*').eq('user_id', user.id).single();
+      setUserProfile(data || { full_name: user.email });
+    }
+  };
+
+  const fetchNotifications = async () => {
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    
+    if (data) {
+      setNotifications(data);
+      setUnreadCount(data.filter(n => !n.read).length);
+    }
+  };
+
+  const markAsRead = async (id: string) => {
+    await supabase.from('notifications').update({ read: true }).eq('id', id);
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    setUnreadCount(prev => Math.max(0, prev - 1));
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -22,9 +82,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const menuItems = [
     { icon: LayoutDashboard, label: "Visão Geral", path: "/dashboard" },
-    { icon: BrainCircuit, label: "AI Advisor", path: "/dashboard/advisor" }, // <--- DESTAQUE PARA IA
+    { icon: BrainCircuit, label: "AI Advisor", path: "/dashboard/advisor" },
     { icon: Wallet, label: "Transações", path: "/dashboard/transactions" },
-    { icon: Calculator, label: "Planejamento", path: "/dashboard/planning" }, // <--- NOVO
+    { icon: Calculator, label: "Planejamento", path: "/dashboard/planning" },
     { icon: Calendar, label: "Calendário", path: "/dashboard/calendar" },
     { icon: CreditCard, label: "Cartões e Contas", path: "/dashboard/cards" },
     { icon: TrendingUp, label: "Investimentos", path: "/dashboard/investments" },
@@ -68,10 +128,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
              {isSidebarOpen && <span className="text-xs text-muted-foreground">Tema</span>}
              <ModeToggle />
           </div>
-          <Button variant="outline" className="w-full" onClick={handleLogout}>
-            <LogOut className={`h-4 w-4 ${isSidebarOpen && 'mr-2'}`} />
-            {isSidebarOpen && "Sair"}
-          </Button>
         </div>
       </aside>
 
@@ -89,13 +145,87 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon">
-              <Bell className="h-5 w-5 text-muted-foreground" />
-            </Button>
-            <Avatar className="h-8 w-8">
-              <AvatarImage src="https://github.com/shadcn.png" />
-              <AvatarFallback>US</AvatarFallback>
-            </Avatar>
+            {/* Notificações */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="relative">
+                  <Bell className="h-5 w-5 text-muted-foreground" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-background" />
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0" align="end">
+                <div className="p-4 border-b font-semibold flex justify-between items-center">
+                  Notificações
+                  {unreadCount > 0 && <Badge variant="secondary">{unreadCount} novas</Badge>}
+                </div>
+                <ScrollArea className="h-[300px]">
+                  {notifications.length === 0 ? (
+                    <div className="p-8 text-center text-muted-foreground text-sm">
+                      Nenhuma notificação por enquanto.
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {notifications.map((notif) => (
+                        <div 
+                          key={notif.id} 
+                          className={`p-4 hover:bg-muted/50 transition-colors cursor-pointer ${!notif.read ? 'bg-primary/5' : ''}`}
+                          onClick={() => markAsRead(notif.id)}
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <h4 className="text-sm font-medium leading-none">{notif.title}</h4>
+                            {!notif.read && <div className="h-2 w-2 bg-primary rounded-full" />}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{notif.message}</p>
+                          <span className="text-[10px] text-muted-foreground/60 mt-2 block">
+                            {new Date(notif.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
+
+            {/* Menu de Perfil */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8 cursor-pointer hover:opacity-80 transition-opacity">
+                    <AvatarImage src={userProfile?.avatar_url} />
+                    <AvatarFallback className="bg-primary/10 text-primary">
+                      {userProfile?.full_name?.charAt(0).toUpperCase() || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{userProfile?.full_name || "Usuário"}</p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      Minha Conta
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => navigate("/dashboard/settings")}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Perfil</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate("/dashboard/settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Configurações</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Sair</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
