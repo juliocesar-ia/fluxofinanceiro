@@ -3,11 +3,12 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   LayoutDashboard, Wallet, CreditCard, PieChart, 
-  Target, Settings, LogOut, Menu, X, Bell 
+  Target, Settings, LogOut, Menu, Bell, Repeat, Calendar, TrendingUp,
+  BrainCircuit, Calculator // <--- NOVOS ÍCONES
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
-import { ModeToggle } from "./ModeToggle"; // Vamos criar isso depois ou use um botão simples
+import { ModeToggle } from "./ModeToggle";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -21,10 +22,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const menuItems = [
     { icon: LayoutDashboard, label: "Visão Geral", path: "/dashboard" },
+    { icon: BrainCircuit, label: "AI Advisor", path: "/dashboard/advisor" }, // <--- DESTAQUE PARA IA
     { icon: Wallet, label: "Transações", path: "/dashboard/transactions" },
-    { icon: CreditCard, label: "Cartões", path: "/dashboard/cards" },
-    { icon: PieChart, label: "Relatórios", path: "/dashboard/reports" },
+    { icon: Calculator, label: "Planejamento", path: "/dashboard/planning" }, // <--- NOVO
+    { icon: Calendar, label: "Calendário", path: "/dashboard/calendar" },
+    { icon: CreditCard, label: "Cartões e Contas", path: "/dashboard/cards" },
+    { icon: TrendingUp, label: "Investimentos", path: "/dashboard/investments" },
+    { icon: Repeat, label: "Assinaturas", path: "/dashboard/subscriptions" },
     { icon: Target, label: "Metas", path: "/dashboard/goals" },
+    { icon: PieChart, label: "Relatórios", path: "/dashboard/reports" },
     { icon: Settings, label: "Configurações", path: "/dashboard/settings" },
   ];
 
@@ -42,12 +48,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         </div>
 
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {menuItems.map((item) => (
             <Link key={item.path} to={item.path}>
               <Button 
                 variant={location.pathname === item.path ? "secondary" : "ghost"} 
                 className={`w-full justify-start ${!isSidebarOpen && 'justify-center px-0'}`}
+                title={!isSidebarOpen ? item.label : undefined}
               >
                 <item.icon className={`h-5 w-5 ${isSidebarOpen && 'mr-2'}`} />
                 {isSidebarOpen && <span>{item.label}</span>}
@@ -56,7 +63,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           ))}
         </nav>
 
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border space-y-2">
+          <div className={`flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
+             {isSidebarOpen && <span className="text-xs text-muted-foreground">Tema</span>}
+             <ModeToggle />
+          </div>
           <Button variant="outline" className="w-full" onClick={handleLogout}>
             <LogOut className={`h-4 w-4 ${isSidebarOpen && 'mr-2'}`} />
             {isSidebarOpen && "Sair"}
@@ -72,7 +83,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="hidden md:flex">
               <Menu className="h-5 w-5" />
             </Button>
-            {/* Mobile Menu Toggle seria aqui */}
             <h1 className="text-lg font-semibold capitalize">
               {menuItems.find(i => i.path === location.pathname)?.label || "Dashboard"}
             </h1>
