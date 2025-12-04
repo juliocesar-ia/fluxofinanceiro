@@ -2,13 +2,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Lock, Sparkles, LogOut, Loader2 } from "lucide-react";
+import { CheckCircle, Lock, Sparkles, LogOut, Loader2, TrendingUp, Calendar, PieChart, Target, Wallet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-// ⚠️ SUBSTITUA PELO ID DO SEU PREÇO NO STRIPE (Ex: price_1Pxyz...)
-const STRIPE_PRICE_ID = "price_1Sa6PuCFnHZiIXy4ymDpUuLF";
+// ⚠️ SUBSTITUA PELO ID DO SEU PREÇO NO STRIPE
+const STRIPE_PRICE_ID = "price_SEU_ID_AQUI";
 
 export default function SubscriptionPage() {
   const [loading, setLoading] = useState(false);
@@ -29,7 +28,6 @@ export default function SubscriptionPage() {
         return;
       }
 
-      // Chama a Edge Function 'subscribe'
       const { data, error } = await supabase.functions.invoke('subscribe', {
         body: { priceId: STRIPE_PRICE_ID },
       });
@@ -37,7 +35,6 @@ export default function SubscriptionPage() {
       if (error) throw error;
 
       if (data?.url) {
-        // Redireciona o usuário para o Checkout do Stripe
         window.location.href = data.url;
       } else {
         throw new Error("URL de pagamento não retornada");
@@ -47,7 +44,7 @@ export default function SubscriptionPage() {
       console.error(error);
       toast({ 
         title: "Erro ao iniciar assinatura", 
-        description: "Tente novamente mais tarde ou contate o suporte.", 
+        description: "Tente novamente mais tarde.", 
         variant: "destructive" 
       });
     } finally {
@@ -55,60 +52,68 @@ export default function SubscriptionPage() {
     }
   };
 
+  const features = [
+    { icon: Wallet, text: "Gestão Ilimitada de Contas e Cartões" },
+    { icon: PieChart, text: "Planejamento Mensal e Orçamentos" },
+    { icon: TrendingUp, text: "Módulo de Investimentos e Ativos" },
+    { icon: Calendar, text: "Calendário Financeiro Inteligente" },
+    { icon: Target, text: "Controle de Metas e Objetivos" },
+    { icon: Sparkles, text: "Relatórios Avançados (PDF e Excel)" },
+    { icon: CheckCircle, text: "Gestão de Assinaturas Recorrentes" },
+  ];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-muted flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full space-y-8 animate-fade-in">
+      <div className="max-w-lg w-full space-y-8 animate-fade-in">
+        
         <div className="text-center">
           <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Lock className="h-8 w-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight mb-2">Acesso Premium Necessário</h1>
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Desbloqueie seu Potencial Financeiro</h1>
           <p className="text-muted-foreground">
-            Seu período gratuito acabou. Assine para continuar controlando suas finanças com inteligência.
+            O período de teste acabou. Assine o Premium para continuar organizando sua vida financeira com as melhores ferramentas do mercado.
           </p>
         </div>
 
-        <Card className="border-2 border-primary shadow-2xl relative overflow-hidden transform hover:scale-105 transition-transform duration-300">
+        <Card className="border-2 border-primary shadow-2xl relative overflow-hidden transform hover:scale-[1.02] transition-transform duration-300">
           <div className="absolute top-0 right-0 bg-gradient-to-r from-primary to-orange-600 text-white text-xs font-bold px-4 py-1 rounded-bl-xl shadow-sm">
-            MAIS POPULAR
+            ACESSO TOTAL
           </div>
-          <CardHeader className="pb-2">
+          
+          <CardHeader className="pb-2 text-center">
             <CardTitle className="text-2xl">FinancePro Premium</CardTitle>
-            <CardDescription>Plano completo mensal.</CardDescription>
+            <CardDescription>Tudo o que você precisa em um só lugar.</CardDescription>
           </CardHeader>
+          
           <CardContent className="space-y-6">
-            <div className="flex items-baseline gap-1">
+            <div className="flex items-baseline justify-center gap-1">
               <span className="text-5xl font-extrabold tracking-tight">R$ 5,00</span>
               <span className="text-muted-foreground font-medium">/mês</span>
             </div>
             
-            <div className="bg-primary/5 rounded-lg p-4 border border-primary/10">
-                <p className="text-sm font-medium text-primary flex items-center gap-2">
-                    <Sparkles className="h-4 w-4" /> 3 Dias de Teste Grátis Inclusos
+            <div className="bg-primary/5 rounded-lg p-3 border border-primary/10 text-center">
+                <p className="text-sm font-medium text-primary">
+                    Cancele a qualquer momento sem taxas.
                 </p>
             </div>
 
-            <ul className="space-y-3">
-              {[
-                "Dashboard Completo & Ilimitado",
-                "Inteligência Artificial (AI Advisor)",
-                "Gestão de Múltiplos Cartões",
-                "Relatórios em PDF e Excel",
-                "Suporte Prioritário no WhatsApp"
-              ].map((item) => (
-                <li key={item} className="flex items-center gap-3 text-sm">
-                  <div className="h-5 w-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
-                    <CheckCircle className="h-3 w-3 text-green-600" />
+            <div className="grid gap-3">
+              {features.map((item, index) => (
+                <div key={index} className="flex items-center gap-3 text-sm group">
+                  <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0 group-hover:bg-green-200 dark:group-hover:bg-green-900/50 transition-colors">
+                    <item.icon className="h-4 w-4 text-green-600" />
                   </div>
-                  {item}
-                </li>
+                  <span className="font-medium">{item.text}</span>
+                </div>
               ))}
-            </ul>
+            </div>
           </CardContent>
-          <CardFooter className="flex-col gap-4 pt-2">
+          
+          <CardFooter className="flex-col gap-4 pt-4 bg-muted/30">
             <Button 
               size="lg" 
-              className="w-full bg-gradient-to-r from-primary to-orange-600 hover:from-primary/90 hover:to-orange-600/90 font-bold text-lg h-12 shadow-lg hover:shadow-primary/25 transition-all" 
+              className="w-full bg-gradient-to-r from-primary to-orange-600 hover:from-primary/90 hover:to-orange-600/90 font-bold text-lg h-14 shadow-lg hover:shadow-primary/25 transition-all" 
               onClick={handleSubscribe}
               disabled={loading}
             >
@@ -118,20 +123,21 @@ export default function SubscriptionPage() {
                     Redirecionando...
                 </>
               ) : (
-                "Assinar Agora"
+                "Assinar Agora e Liberar Acesso"
               )}
             </Button>
-            <div className="flex items-center justify-between w-full text-xs text-muted-foreground px-2">
-               <span>Cancelamento fácil</span>
+            
+            <div className="flex items-center justify-center w-full text-xs text-muted-foreground gap-4">
+               <span className="flex items-center gap-1"><Lock className="h-3 w-3" /> Pagamento Seguro</span>
                <span className="h-1 w-1 bg-muted-foreground rounded-full"></span>
-               <span>Pagamento Seguro via Stripe</span>
+               <span>Suporte via E-mail</span>
             </div>
           </CardFooter>
         </Card>
         
         <div className="text-center">
             <Button variant="link" size="sm" onClick={handleLogout} className="text-muted-foreground hover:text-destructive">
-              <LogOut className="h-4 w-4 mr-2" /> Sair da conta e voltar depois
+              <LogOut className="h-4 w-4 mr-2" /> Sair da conta
             </Button>
         </div>
       </div>
