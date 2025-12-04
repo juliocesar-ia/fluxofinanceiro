@@ -68,7 +68,7 @@ export default function PrivacyPage() {
             <section>
               <h2 className="text-xl font-semibold text-foreground mb-3">6. Contato</h2>
               <p>
-                Para questões sobre privacidade, entre em contato conosco pelo e-mail: <strong>privacidade@financepro.com</strong>
+                Para questões sobre privacidade, suporte ou dados, entre em contato conosco pelo e-mail oficial: <strong>financeeeproo@gmail.com</strong>
               </p>
             </section>
           </div>

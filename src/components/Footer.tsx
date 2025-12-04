@@ -36,8 +36,8 @@ export const Footer = () => {
               <li><Link to="/privacy" className="text-sm text-muted-foreground hover:text-primary transition-colors">Política de Privacidade</Link></li>
               <li><Link to="/terms" className="text-sm text-muted-foreground hover:text-primary transition-colors">Termos de Uso</Link></li>
               <li>
-                <a href="mailto:suporte@financepro.com" className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-2 mt-2">
-                  <Mail className="h-4 w-4" /> suporte@financepro.com
+                <a href="mailto:financeeeproo@gmail.com" className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-2 mt-2">
+                  <Mail className="h-4 w-4" /> financeeeproo@gmail.com
                 </a>
               </li>
             </ul>

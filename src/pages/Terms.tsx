@@ -61,6 +61,13 @@ export default function TermsPage() {
                 Reservamo-nos o direito de modificar estes termos a qualquer momento. Notificaremos os usuários sobre mudanças significativas através da plataforma ou e-mail.
               </p>
             </section>
+
+            <section>
+              <h2 className="text-xl font-semibold text-foreground mb-3">6. Suporte</h2>
+              <p>
+                Dúvidas sobre os termos ou problemas com sua conta? Fale com nosso suporte: <strong>financeeeproo@gmail.com</strong>
+              </p>
+            </section>
           </div>
         </div>
       </div>
