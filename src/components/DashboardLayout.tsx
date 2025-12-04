@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { 
   LayoutDashboard, Wallet, CreditCard, PieChart, 
   Target, Settings, LogOut, Menu, Bell, Repeat, Calendar, TrendingUp,
-  Calculator, User, X, BarChart3, TrendingDown
+  Calculator, User, Eye, EyeOff
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -26,26 +26,37 @@ import { ScrollArea } from "./ui/scroll-area";
 import { Badge } from "./ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { InstallPWA } from "./InstallPWA";
+import { usePrivacy } from "@/context/privacy-context"; // <--- Import Novo
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [userProfile, setUserProfile] = useState<any>(null);
+  
+  const { isPrivacyOn, togglePrivacy } = usePrivacy(); // <--- Hook de Privacidade
+  
   const location = useLocation();
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchUserData();
     fetchNotifications();
+    
     const channel = supabase
       .channel('schema-db-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => { fetchNotifications(); })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
+        fetchNotifications();
+      })
       .subscribe();
+
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  useEffect(() => { setIsMobileOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    setIsMobileOpen(false);
+  }, [location.pathname]);
 
   const fetchUserData = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -56,8 +67,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   const fetchNotifications = async () => {
-    const { data } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(10);
-    if (data) { setNotifications(data); setUnreadCount(data.filter(n => !n.read).length); }
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    
+    if (data) {
+      setNotifications(data);
+      setUnreadCount(data.filter(n => !n.read).length);
+    }
   };
 
   const markAsRead = async (id: string) => {
@@ -75,8 +94,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { icon: LayoutDashboard, label: "Visão Geral", path: "/dashboard" },
     { icon: Wallet, label: "Transações", path: "/dashboard/transactions" },
     { icon: Calculator, label: "Planejamento", path: "/dashboard/planning" },
-    { icon: BarChart3, label: "Comparativo", path: "/dashboard/benchmark" },
-    { icon: TrendingDown, label: "Dívidas", path: "/dashboard/debts" }, // <--- NOVO
     { icon: Calendar, label: "Calendário", path: "/dashboard/calendar" },
     { icon: CreditCard, label: "Cartões e Contas", path: "/dashboard/cards" },
     { icon: TrendingUp, label: "Investimentos", path: "/dashboard/investments" },
@@ -89,20 +106,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const NavigationContent = () => (
     <div className="flex flex-col h-full">
       <div className="h-16 flex items-center justify-center border-b border-border">
-        <span className="text-xl font-bold bg-gradient-to-r from-primary to-orange-600 bg-clip-text text-transparent">FinancePro</span>
+        <span className="text-xl font-bold bg-gradient-to-r from-primary to-orange-600 bg-clip-text text-transparent">
+          FinancePro
+        </span>
       </div>
+
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {menuItems.map((item) => (
           <Link key={item.path} to={item.path}>
-            <Button variant={location.pathname === item.path ? "secondary" : "ghost"} className="w-full justify-start">
-              <item.icon className="h-5 w-5 mr-2" /><span>{item.label}</span>
+            <Button 
+              variant={location.pathname === item.path ? "secondary" : "ghost"} 
+              className="w-full justify-start"
+            >
+              <item.icon className="h-5 w-5 mr-2" />
+              <span>{item.label}</span>
             </Button>
           </Link>
         ))}
       </nav>
+
       <div className="p-4 border-t border-border space-y-2">
-        <div className="flex items-center justify-between"><span className="text-xs text-muted-foreground">Tema</span><ModeToggle /></div>
-        <Button variant="outline" className="w-full" onClick={handleLogout}><LogOut className="h-4 w-4 mr-2" />Sair</Button>
+        <div className="flex items-center justify-between">
+           <span className="text-xs text-muted-foreground">Tema</span>
+           <ModeToggle />
+        </div>
+        <Button variant="outline" className="w-full" onClick={handleLogout}>
+          <LogOut className="h-4 w-4 mr-2" />
+          Sair
+        </Button>
       </div>
     </div>
   );
@@ -131,11 +162,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarOpen ? 'md:ml-64' : 'md:ml-20'} w-full`}>
         <header className="h-16 bg-card/50 backdrop-blur border-b border-border flex items-center justify-between px-4 sticky top-0 z-40">
           <div className="flex items-center gap-4">
-            <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}><SheetTrigger asChild><Button variant="ghost" size="icon" className="md:hidden"><Menu className="h-5 w-5" /></Button></SheetTrigger><SheetContent side="left" className="p-0 w-72"><NavigationContent /></SheetContent></Sheet>
+            <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
+              <SheetTrigger asChild><Button variant="ghost" size="icon" className="md:hidden"><Menu className="h-5 w-5" /></Button></SheetTrigger>
+              <SheetContent side="left" className="p-0 w-72"><NavigationContent /></SheetContent>
+            </Sheet>
             <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="hidden md:flex"><Menu className="h-5 w-5" /></Button>
             <h1 className="text-lg font-semibold capitalize truncate max-w-[150px] sm:max-w-none">{menuItems.find(i => i.path === location.pathname)?.label || "Dashboard"}</h1>
           </div>
+          
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* BOTÃO DE PRIVACIDADE (NOVO) */}
+            <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={togglePrivacy} 
+                title={isPrivacyOn ? "Mostrar Valores" : "Esconder Valores"}
+            >
+                {isPrivacyOn ? <EyeOff className="h-5 w-5 text-primary" /> : <Eye className="h-5 w-5 text-muted-foreground" />}
+            </Button>
+
             <Popover>
               <PopoverTrigger asChild><Button variant="ghost" size="icon" className="relative"><Bell className="h-5 w-5 text-muted-foreground" />{unreadCount > 0 && (<span className="absolute top-1 right-1 h-2.5 w-2.5 bg-red-500 rounded-full border-2 border-background" />)}</Button></PopoverTrigger>
               <PopoverContent className="w-80 p-0 mr-2" align="end">
@@ -143,6 +188,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <ScrollArea className="h-[300px]">{notifications.length === 0 ? (<div className="p-8 text-center text-muted-foreground text-sm">Nenhuma notificação.</div>) : (<div className="divide-y">{notifications.map((notif) => (<div key={notif.id} className={`p-4 hover:bg-muted/50 transition-colors cursor-pointer ${!notif.read ? 'bg-primary/5' : ''}`} onClick={() => markAsRead(notif.id)}><div className="flex justify-between items-start gap-2"><h4 className="text-sm font-medium leading-none">{notif.title}</h4>{!notif.read && <div className="h-2 w-2 bg-primary rounded-full" />}</div><p className="text-xs text-muted-foreground mt-1 line-clamp-2">{notif.message}</p><span className="text-[10px] text-muted-foreground/60 mt-2 block">{new Date(notif.created_at).toLocaleDateString()}</span></div>))}</div>)}</ScrollArea>
               </PopoverContent>
             </Popover>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild><Button variant="ghost" className="relative h-8 w-8 rounded-full"><Avatar className="h-8 w-8 cursor-pointer hover:opacity-80 transition-opacity"><AvatarImage src={userProfile?.avatar_url} /><AvatarFallback className="bg-primary/10 text-primary">{userProfile?.full_name?.charAt(0).toUpperCase() || "U"}</AvatarFallback></Avatar></Button></DropdownMenuTrigger>
               <DropdownMenuContent className="w-56" align="end" forceMount>
@@ -156,7 +202,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </DropdownMenu>
           </div>
         </header>
-        <main className="flex-1 p-4 sm:p-6 overflow-auto w-full max-w-[100vw] overflow-x-hidden">{children}</main>
+
+        <main className="flex-1 p-4 sm:p-6 overflow-auto w-full max-w-[100vw] overflow-x-hidden">
+          {children}
+        </main>
+        
         <InstallPWA />
       </div>
     </div>
