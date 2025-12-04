@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Shield, Smartphone, Monitor, Upload, Loader2, Plus, Trash2, RefreshCw, Mail, FileText, ExternalLink } from "lucide-react";
+import { Shield, Smartphone, Monitor, Upload, Loader2, Plus, Trash2, RefreshCw, MessageSquare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { Link } from "react-router-dom";
@@ -21,25 +21,37 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const { setTheme, theme } = useTheme();
 
+  // Estados Perfil
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState(""); // <--- NOVO ESTADO
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
+  // Estados Categorias
   const [categories, setCategories] = useState<any[]>([]);
   const [newCatName, setNewCatName] = useState("");
   const [newCatType, setNewCatType] = useState<"income" | "expense">("expense");
   const [newCatColor, setNewCatColor] = useState("#808080");
 
-  useEffect(() => { getProfile(); fetchCategories(); }, []);
+  useEffect(() => {
+    getProfile();
+    fetchCategories();
+  }, []);
 
   const getProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       setUser(user);
       setEmail(user.email || "");
+      
       const { data: profile } = await supabase.from('profiles').select('*').eq('user_id', user.id).single();
-      if (profile) { setFullName(profile.full_name || ""); setAvatarUrl(profile.avatar_url); } 
-      else { setFullName(user.user_metadata.full_name || ""); }
+      if (profile) {
+        setFullName(profile.full_name || "");
+        setPhone(profile.phone || ""); // <--- CARREGA O TELEFONE
+        setAvatarUrl(profile.avatar_url);
+      } else {
+        setFullName(user.user_metadata.full_name || "");
+      }
     }
   };
 
@@ -51,23 +63,35 @@ export default function SettingsPage() {
   const handleCreateCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName) return;
-    const { error } = await supabase.from('categories').insert({ user_id: user.id, name: newCatName, type: newCatType, color: newCatColor });
+    const { error } = await supabase.from('categories').insert({
+      user_id: user.id,
+      name: newCatName,
+      type: newCatType,
+      color: newCatColor
+    });
     if (error) toast({ title: "Erro", variant: "destructive" });
-    else { toast({ title: "Criada!" }); setNewCatName(""); fetchCategories(); }
+    else { toast({ title: "Categoria criada!" }); setNewCatName(""); fetchCategories(); }
   };
 
   const handleDeleteCategory = async (id: string) => {
-    if (!confirm("Excluir?")) return;
+    if (!confirm("Excluir categoria?")) return;
     const { error } = await supabase.from('categories').delete().eq('id', id);
     if (!error) { toast({ title: "Removida" }); fetchCategories(); }
   };
 
   const handleSeedCategories = async () => {
     setLoading(true);
-    const defaults = [{ name: 'Alimentação', type: 'expense', color: '#ef4444' }, { name: 'Transporte', type: 'expense', color: '#f97316' }, { name: 'Salário', type: 'income', color: '#22c55e' }];
+    const defaults = [
+      { name: 'Alimentação', type: 'expense', color: '#ef4444' },
+      { name: 'Transporte', type: 'expense', color: '#f97316' },
+      { name: 'Lazer', type: 'expense', color: '#8b5cf6' },
+      { name: 'Moradia', type: 'expense', color: '#3b82f6' },
+      { name: 'Saúde', type: 'expense', color: '#ef4444' },
+      { name: 'Salário', type: 'income', color: '#22c55e' },
+    ];
     const toInsert = defaults.map(d => ({ ...d, user_id: user.id }));
     const { error } = await supabase.from('categories').insert(toInsert);
-    if (error) toast({ title: "Erro", description: "Algumas já existem." });
+    if (error) toast({ title: "Algumas já existem", variant: "destructive" });
     else { toast({ title: "Padrões criados!" }); fetchCategories(); }
     setLoading(false);
   };
@@ -86,33 +110,34 @@ export default function SettingsPage() {
       setAvatarUrl(publicUrl);
       toast({ title: "Foto atualizada!" });
       setTimeout(() => window.location.reload(), 1000);
-    } catch (error: any) { toast({ title: "Erro", description: error.message, variant: "destructive" }); } finally { setUploading(false); }
+    } catch (error: any) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } finally { setUploading(false); }
   };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.from('profiles').upsert({ user_id: user.id, full_name: fullName, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
-    if (error) toast({ title: "Erro", variant: "destructive" }); else toast({ title: "Atualizado!" });
-    setLoading(false);
-  };
+    
+    // Formata telefone (remove espaços e garante formato internacional se necessário)
+    // Aqui salvamos como o usuário digita, mas o ideal é padronizar (ex: whatsapp:+55...)
+    let cleanPhone = phone.replace(/\D/g, ''); 
+    if(cleanPhone && !cleanPhone.startsWith('55') && cleanPhone.length > 10) cleanPhone = '55' + cleanPhone; // Add Brasil DDI se faltar
+    const formattedPhone = cleanPhone ? `whatsapp:+${cleanPhone}` : null;
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    const formData = new FormData(e.target as HTMLFormElement);
-    const old = formData.get("old_password") as string;
-    const pass = formData.get("password") as string;
-    const confirm = formData.get("confirm_password") as string;
+    const { error } = await supabase.from('profiles').upsert(
+      { 
+        user_id: user.id, 
+        full_name: fullName, 
+        phone: formattedPhone, // Salva formatado para Twilio
+        updated_at: new Date().toISOString() 
+      },
+      { onConflict: 'user_id' }
+    );
 
-    if (pass !== confirm) { toast({ title: "Senhas não conferem", variant: "destructive" }); setLoading(false); return; }
-    if (pass.length < 6) { toast({ title: "Senha curta", variant: "destructive" }); setLoading(false); return; }
-
-    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password: old });
-    if (loginError) { toast({ title: "Senha antiga incorreta", variant: "destructive" }); setLoading(false); return; }
-
-    const { error } = await supabase.auth.updateUser({ password: pass });
-    if (error) toast({ title: "Erro", description: error.message }); else { toast({ title: "Senha atualizada!" }); (e.target as HTMLFormElement).reset(); }
+    if (error) toast({ title: "Erro ao salvar perfil", description: error.message, variant: "destructive" });
+    else toast({ title: "Perfil atualizado!" });
+    
     setLoading(false);
   };
 
@@ -122,17 +147,16 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-bold tracking-tight">Configurações</h1>
 
         <Tabs defaultValue="profile" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 lg:w-[600px]">
+          <TabsList className="grid w-full grid-cols-4 lg:w-[500px]">
             <TabsTrigger value="profile">Perfil</TabsTrigger>
             <TabsTrigger value="categories">Categorias</TabsTrigger>
-            <TabsTrigger value="security">Segurança</TabsTrigger>
             <TabsTrigger value="appearance">Visual</TabsTrigger>
-            <TabsTrigger value="legal">Legal</TabsTrigger> {/* <--- NOVA ABA */}
+            <TabsTrigger value="integration">Integrações</TabsTrigger>
           </TabsList>
 
           <TabsContent value="profile" className="mt-6 space-y-6">
             <Card>
-              <CardHeader><CardTitle>Seus Dados</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Seus Dados</CardTitle><CardDescription>Gerencie sua identidade.</CardDescription></CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-center gap-6">
                   <Avatar className="h-24 w-24 border-4 border-background shadow-sm"><AvatarImage src={avatarUrl || ""} /><AvatarFallback>{fullName?.charAt(0).toUpperCase()}</AvatarFallback></Avatar>
@@ -142,9 +166,18 @@ export default function SettingsPage() {
                   </Label>
                 </div>
                 <form onSubmit={handleUpdateProfile} className="space-y-4">
-                  <div className="grid gap-2"><Label>Nome</Label><Input value={fullName} onChange={e => setFullName(e.target.value)} /></div>
+                  <div className="grid gap-2"><Label>Nome Completo</Label><Input value={fullName} onChange={e => setFullName(e.target.value)} /></div>
                   <div className="grid gap-2"><Label>E-mail</Label><Input value={email} disabled className="bg-muted" /></div>
-                  <Button disabled={loading}>Salvar</Button>
+                  <div className="grid gap-2">
+                    <Label>Celular (WhatsApp)</Label>
+                    <Input 
+                      value={phone} 
+                      onChange={e => setPhone(e.target.value)} 
+                      placeholder="Ex: 11999999999" 
+                    />
+                    <p className="text-xs text-muted-foreground">Necessário para usar o bot. Digite DDD + Número.</p>
+                  </div>
+                  <Button disabled={loading}>Salvar Alterações</Button>
                 </form>
               </CardContent>
             </Card>
@@ -165,26 +198,6 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="security" className="mt-6 space-y-6">
-             <Card>
-                <CardHeader><CardTitle>Trocar Senha</CardTitle></CardHeader>
-                <CardContent>
-                   <form onSubmit={handlePasswordChange} className="space-y-4 border p-4 rounded-lg">
-                      <div className="space-y-2"><Label>Senha Antiga</Label><Input name="old_password" type="password" required /></div>
-                      <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-2"><Label>Nova Senha</Label><Input name="password" type="password" required /></div>
-                         <div className="space-y-2"><Label>Repetir Nova</Label><Input name="confirm_password" type="password" required /></div>
-                      </div>
-                      <Button disabled={loading} className="w-full">Atualizar</Button>
-                   </form>
-                </CardContent>
-             </Card>
-             <Card>
-                <CardHeader><CardTitle className="flex items-center gap-2"><Shield className="h-5 w-5" /> 2FA</CardTitle></CardHeader>
-                <CardContent><div className="flex justify-between border p-4 rounded-lg"><div className="space-y-0.5"><div className="font-medium">App Autenticador</div><div className="text-sm text-muted-foreground">Em breve.</div></div><Switch disabled /></div></CardContent>
-             </Card>
-          </TabsContent>
-
           <TabsContent value="appearance" className="mt-6">
             <Card>
               <CardHeader><CardTitle>Tema</CardTitle></CardHeader>
@@ -201,35 +214,23 @@ export default function SettingsPage() {
             </Card>
           </TabsContent>
 
-          {/* --- ABA LEGAL (NOVA) --- */}
-          <TabsContent value="legal" className="mt-6">
+          <TabsContent value="integration" className="mt-6">
             <Card>
               <CardHeader>
-                <CardTitle>Documentação Legal</CardTitle>
-                <CardDescription>Termos e políticas que regem o uso da plataforma.</CardDescription>
+                <CardTitle className="flex items-center gap-2"><MessageSquare className="h-5 w-5 text-green-600" /> Bot do WhatsApp</CardTitle>
+                <CardDescription>Envie áudios ou fotos para lançar gastos automaticamente.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Link to="/terms" target="_blank" className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="font-medium">Termos de Uso</p>
-                      <p className="text-xs text-muted-foreground">Regras de utilização e pagamentos.</p>
-                    </div>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                </Link>
-                
-                <Link to="/privacy" target="_blank" className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <Shield className="h-5 w-5 text-primary" />
-                    <div>
-                      <p className="font-medium">Política de Privacidade</p>
-                      <p className="text-xs text-muted-foreground">Como tratamos seus dados (LGPD).</p>
-                    </div>
-                  </div>
-                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                </Link>
+                <div className="bg-muted p-4 rounded-lg text-sm">
+                  <p className="font-medium mb-2">Como usar:</p>
+                  <ol className="list-decimal pl-4 space-y-1 text-muted-foreground">
+                    <li>Salve seu número na aba <strong>Perfil</strong>.</li>
+                    <li>Envie uma mensagem para o nosso bot no WhatsApp.</li>
+                    <li>Mande um áudio: <em>"Gastei 50 reais no almoço"</em>.</li>
+                    <li>Ou mande a foto de uma nota fiscal.</li>
+                  </ol>
+                </div>
+                <Button variant="outline" className="w-full text-green-600 border-green-200 hover:bg-green-50">Conectar ao WhatsApp (Em breve)</Button>
               </CardContent>
             </Card>
           </TabsContent>
