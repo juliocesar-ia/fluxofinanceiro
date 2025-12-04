@@ -14,9 +14,10 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Filter, ArrowUpDown, Trash2, Pencil } from "lucide-react";
+import { Plus, Search, Filter, Trash2, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -24,13 +25,11 @@ export default function TransactionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   
-  // Estados do Modal e Edição
+  // Estados do Modal
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<any>(null); // Armazena a transação sendo editada
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
   
   const { toast } = useToast();
-
-  // Dados auxiliares
   const [accounts, setAccounts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
@@ -43,21 +42,15 @@ export default function TransactionsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Buscar Transações
+    // Buscar Transações
     const { data: transData } = await supabase
       .from('transactions')
-      .select(`
-        *,
-        accounts (name),
-        categories (name, color)
-      `)
+      .select(`*, accounts(name), categories(name, color)`)
       .eq('user_id', user.id)
       .order('date', { ascending: false });
 
-    // 2. Buscar Contas
+    // Buscar Auxiliares
     const { data: accData } = await supabase.from('accounts').select('*');
-    
-    // 3. Buscar Categorias
     const { data: catData } = await supabase.from('categories').select('*');
 
     if (transData) setTransactions(transData);
@@ -65,6 +58,12 @@ export default function TransactionsPage() {
     if (catData) setCategories(catData);
     
     setLoading(false);
+  };
+
+  // Função auxiliar para corrigir o bug da data (Adiciona meio-dia para evitar GMT-3 voltando o dia)
+  const fixDate = (dateString: string) => {
+    if (!dateString) return new Date();
+    return new Date(dateString + 'T12:00:00');
   };
 
   const filteredTransactions = transactions.filter(t => {
@@ -75,7 +74,6 @@ export default function TransactionsPage() {
 
   const handleDelete = async (id: string) => {
     if(!confirm("Tem certeza que deseja excluir?")) return;
-    
     const { error } = await supabase.from('transactions').delete().eq('id', id);
     if (!error) {
       toast({ title: "Transação removida" });
@@ -83,13 +81,12 @@ export default function TransactionsPage() {
     }
   };
 
-  // Função para abrir modal em modo EDIÇÃO
-  const handleEdit = (transaction: any) => {
-    setEditingTransaction(transaction); // Salva os dados
-    setIsDialogOpen(true); // Abre o modal
+  const handleEdit = (t: any) => {
+    console.log("Editando:", t); // Debug
+    setEditingTransaction(t);
+    setIsDialogOpen(true);
   };
 
-  // Função para abrir modal em modo CRIAÇÃO (limpa dados anteriores)
   const handleNew = () => {
     setEditingTransaction(null);
     setIsDialogOpen(true);
@@ -103,36 +100,25 @@ export default function TransactionsPage() {
 
     if (!user) return;
 
-    const accountId = formData.get('account_id')?.toString();
-    const categoryId = formData.get('category_id')?.toString();
-
-    if (!accountId || accountId === "default") {
-       toast({ title: "Selecione uma conta!", variant: "destructive" });
-       return;
-    }
-
     const transactionData = {
       user_id: user.id,
       description: formData.get('description'),
       amount: Number(formData.get('amount')),
       type: formData.get('type'),
       date: formData.get('date'),
-      account_id: accountId,
-      category_id: categoryId,
-      category: "Personalizada" 
+      account_id: formData.get('account_id'),
+      category_id: formData.get('category_id'),
+      category: "Personalizada" // Fallback
     };
 
     let error;
-
     if (editingTransaction) {
-      // MODO EDIÇÃO: Update
       const { error: updateError } = await supabase
         .from('transactions')
         .update(transactionData)
         .eq('id', editingTransaction.id);
       error = updateError;
     } else {
-      // MODO CRIAÇÃO: Insert
       const { error: insertError } = await supabase
         .from('transactions')
         .insert(transactionData);
@@ -140,10 +126,9 @@ export default function TransactionsPage() {
     }
 
     if (error) {
-      console.error(error);
       toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: editingTransaction ? "Transação atualizada!" : "Transação criada!" });
+      toast({ title: editingTransaction ? "Atualizado com sucesso!" : "Criado com sucesso!" });
       setIsDialogOpen(false);
       fetchInitialData();
     }
@@ -174,9 +159,7 @@ export default function TransactionsPage() {
                   <div className="space-y-2">
                     <Label>Tipo</Label>
                     <Select name="type" defaultValue={editingTransaction?.type || "expense"}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="expense">Despesa</SelectItem>
                         <SelectItem value="income">Receita</SelectItem>
@@ -185,47 +168,26 @@ export default function TransactionsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Valor</Label>
-                    <Input 
-                      type="number" 
-                      name="amount" 
-                      step="0.01" 
-                      placeholder="0,00" 
-                      defaultValue={editingTransaction?.amount} 
-                      required 
-                    />
+                    <Input type="number" name="amount" step="0.01" defaultValue={editingTransaction?.amount} required />
                   </div>
                 </div>
                 
                 <div className="space-y-2">
                   <Label>Descrição</Label>
-                  <Input 
-                    name="description" 
-                    placeholder="Ex: Supermercado Semanal" 
-                    defaultValue={editingTransaction?.description}
-                    required 
-                  />
+                  <Input name="description" defaultValue={editingTransaction?.description} required />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Data</Label>
-                    <Input 
-                      type="date" 
-                      name="date" 
-                      defaultValue={editingTransaction ? editingTransaction.date : new Date().toISOString().split('T')[0]} 
-                      required 
-                    />
+                    <Input type="date" name="date" defaultValue={editingTransaction?.date || new Date().toISOString().split('T')[0]} required />
                   </div>
                   <div className="space-y-2">
                     <Label>Conta</Label>
                     <Select name="account_id" defaultValue={editingTransaction?.account_id}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione" />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                       <SelectContent>
-                        {accounts.length > 0 ? accounts.map(acc => (
-                          <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>
-                        )) : <SelectItem value="default">Crie uma conta primeiro</SelectItem>}
+                        {accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -234,25 +196,21 @@ export default function TransactionsPage() {
                 <div className="space-y-2">
                   <Label>Categoria</Label>
                   <Select name="category_id" defaultValue={editingTransaction?.category_id}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione" />
-                    </SelectTrigger>
+                    <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
-                      {categories.length > 0 ? categories.map(cat => (
+                      {categories.map(cat => (
                         <SelectItem key={cat.id} value={cat.id}>
                           <div className="flex items-center gap-2">
-                            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color || '#ccc' }} />
+                            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color }} />
                             {cat.name}
                           </div>
                         </SelectItem>
-                      )) : <SelectItem value="default" disabled>Nenhuma categoria criada</SelectItem>}
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
-                <Button type="submit" className="w-full">
-                  {editingTransaction ? "Atualizar" : "Salvar"} Transação
-                </Button>
+                <Button type="submit" className="w-full">{editingTransaction ? "Salvar Alterações" : "Criar"}</Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -261,15 +219,9 @@ export default function TransactionsPage() {
         <div className="flex flex-col sm:flex-row gap-4 items-center bg-card p-4 rounded-lg border border-border shadow-sm">
           <div className="relative w-full sm:w-96">
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Buscar transação..." 
-              className="pl-8" 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <Input placeholder="Buscar..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
-          
-          <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0">
+          <div className="flex gap-2">
             <Button variant={typeFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('all')}>Todas</Button>
             <Button variant={typeFilter === 'income' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('income')}>Receitas</Button>
             <Button variant={typeFilter === 'expense' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('expense')}>Despesas</Button>
@@ -280,45 +232,32 @@ export default function TransactionsPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/50">
-                <TableHead className="w-[100px]">Data</TableHead>
+                <TableHead>Data</TableHead>
                 <TableHead>Descrição</TableHead>
                 <TableHead>Categoria</TableHead>
                 <TableHead>Conta</TableHead>
                 <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="w-[100px] text-center">Ações</TableHead>
+                <TableHead className="text-center">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">Carregando transações...</TableCell>
-                </TableRow>
+                <TableRow><TableCell colSpan={6} className="h-24 text-center">Carregando...</TableCell></TableRow>
               ) : filteredTransactions.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">Nenhuma transação encontrada.</TableCell>
-                </TableRow>
+                <TableRow><TableCell colSpan={6} className="h-24 text-center">Nenhuma transação.</TableCell></TableRow>
               ) : (
                 filteredTransactions.map((t) => (
-                  <TableRow key={t.id} className="group hover:bg-muted/30 transition-colors">
-                    <TableCell className="font-medium">
-                      {format(new Date(t.date), 'dd/MM/yyyy')}
-                    </TableCell>
+                  <TableRow key={t.id} className="group hover:bg-muted/30">
+                    {/* CORREÇÃO DO BUG DA DATA AQUI: fixDate() */}
+                    <TableCell className="font-medium">{format(fixDate(t.date), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
                     <TableCell>{t.description}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="font-normal">
-                        {t.categories?.name || t.category || 'Geral'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {t.accounts?.name || 'Carteira'}
-                    </TableCell>
+                    <TableCell><Badge variant="secondary">{t.categories?.name || 'Geral'}</Badge></TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{t.accounts?.name}</TableCell>
                     <TableCell className={`text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                      {t.type === 'expense' ? '-' : '+'} 
                       {Number(t.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                         {/* BOTÃO DE EDITAR FUNCIONAL */}
                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(t)}>
                             <Pencil className="h-4 w-4 text-blue-500" />
                          </Button>
