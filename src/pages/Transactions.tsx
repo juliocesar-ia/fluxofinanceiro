@@ -10,13 +10,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from "@/components/ui/select";
 import { 
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger 
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Filter, Trash2, Pencil } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Plus, Search, Filter, Trash2, Pencil, CalendarClock, Repeat } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 export default function TransactionsPage() {
@@ -28,6 +29,11 @@ export default function TransactionsPage() {
   // Estados do Modal
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
+  
+  // Estados de Recorrência/Parcelamento
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<'installments' | 'fixed'>('installments');
+  const [installments, setInstallments] = useState(2);
   
   const { toast } = useToast();
   const [accounts, setAccounts] = useState<any[]>([]);
@@ -60,7 +66,7 @@ export default function TransactionsPage() {
     setLoading(false);
   };
 
-  // Função auxiliar para corrigir o bug da data (Adiciona meio-dia para evitar GMT-3 voltando o dia)
+  // Corrige bug de data (GMT-3)
   const fixDate = (dateString: string) => {
     if (!dateString) return new Date();
     return new Date(dateString + 'T12:00:00');
@@ -82,13 +88,15 @@ export default function TransactionsPage() {
   };
 
   const handleEdit = (t: any) => {
-    console.log("Editando:", t); // Debug
     setEditingTransaction(t);
+    setIsRecurring(false); // Desativa recorrência na edição para simplificar
     setIsDialogOpen(true);
   };
 
   const handleNew = () => {
     setEditingTransaction(null);
+    setIsRecurring(false);
+    setInstallments(2);
     setIsDialogOpen(true);
   };
 
@@ -100,38 +108,70 @@ export default function TransactionsPage() {
 
     if (!user) return;
 
-    const transactionData = {
+    const baseTransaction = {
       user_id: user.id,
-      description: formData.get('description'),
+      description: formData.get('description') as string,
       amount: Number(formData.get('amount')),
       type: formData.get('type'),
-      date: formData.get('date'),
       account_id: formData.get('account_id'),
       category_id: formData.get('category_id'),
-      category: "Personalizada" // Fallback
+      category: "Personalizada",
+      date: formData.get('date') as string
     };
 
-    let error;
+    let error = null;
+
     if (editingTransaction) {
+      // Edição simples (sem gerar parcelas)
       const { error: updateError } = await supabase
         .from('transactions')
-        .update(transactionData)
+        .update(baseTransaction)
         .eq('id', editingTransaction.id);
       error = updateError;
     } else {
-      const { error: insertError } = await supabase
-        .from('transactions')
-        .insert(transactionData);
-      error = insertError;
+      // Criação (Com suporte a parcelamento)
+      if (isRecurring && recurrenceType === 'installments') {
+        // GERAÇÃO DE PARCELAS
+        const transactionsToInsert = [];
+        const initialDate = new Date(baseTransaction.date + 'T12:00:00');
+
+        for (let i = 0; i < installments; i++) {
+          const nextDate = addMonths(initialDate, i);
+          transactionsToInsert.push({
+            ...baseTransaction,
+            description: `${baseTransaction.description} (${i + 1}/${installments})`,
+            date: nextDate.toISOString().split('T')[0] // Formato YYYY-MM-DD
+          });
+        }
+
+        const { error: insertError } = await supabase.from('transactions').insert(transactionsToInsert);
+        error = insertError;
+
+      } else {
+        // Inserção Única (ou Recorrente Fixa tratada como única por enquanto)
+        const { error: insertError } = await supabase.from('transactions').insert(baseTransaction);
+        error = insertError;
+      }
     }
 
     if (error) {
       toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: editingTransaction ? "Atualizado com sucesso!" : "Criado com sucesso!" });
+      const msg = isRecurring 
+        ? `Criadas ${installments} parcelas com sucesso!` 
+        : (editingTransaction ? "Atualizado com sucesso!" : "Criado com sucesso!");
+      
+      toast({ title: msg });
       setIsDialogOpen(false);
       fetchInitialData();
     }
+  };
+
+  // Cálculo da data final para feedback visual
+  const getEndDate = () => {
+    const today = new Date();
+    const end = addMonths(today, installments - 1);
+    return format(end, "MMMM 'de' yyyy", { locale: ptBR });
   };
 
   return (
@@ -141,7 +181,7 @@ export default function TransactionsPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Transações</h1>
-            <p className="text-muted-foreground">Gerencie todas as suas entradas e saídas.</p>
+            <p className="text-muted-foreground">Gerencie entradas, saídas e parcelamentos.</p>
           </div>
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -150,10 +190,12 @@ export default function TransactionsPage() {
                 <Plus className="mr-2 h-4 w-4" /> Nova Transação
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{editingTransaction ? "Editar Transação" : "Adicionar Transação"}</DialogTitle>
+                {!editingTransaction && <DialogDescription>Registe uma compra única ou parcelada.</DialogDescription>}
               </DialogHeader>
+              
               <form onSubmit={handleSave} className="space-y-4 py-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -167,23 +209,40 @@ export default function TransactionsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Valor</Label>
-                    <Input type="number" name="amount" step="0.01" defaultValue={editingTransaction?.amount} required />
+                    <Label>Valor {isRecurring && "(da parcela)"}</Label>
+                    <Input 
+                      type="number" 
+                      name="amount" 
+                      step="0.01" 
+                      placeholder="0,00" 
+                      defaultValue={editingTransaction?.amount} 
+                      required 
+                    />
                   </div>
                 </div>
                 
                 <div className="space-y-2">
                   <Label>Descrição</Label>
-                  <Input name="description" defaultValue={editingTransaction?.description} required />
+                  <Input 
+                    name="description" 
+                    placeholder="Ex: Compra TV, Empréstimo" 
+                    defaultValue={editingTransaction?.description}
+                    required 
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Data</Label>
-                    <Input type="date" name="date" defaultValue={editingTransaction?.date || new Date().toISOString().split('T')[0]} required />
+                    <Label>Data {isRecurring && "(1ª parcela)"}</Label>
+                    <Input 
+                      type="date" 
+                      name="date" 
+                      defaultValue={editingTransaction ? editingTransaction.date : new Date().toISOString().split('T')[0]} 
+                      required 
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label>Conta</Label>
+                    <Label>Conta / Cartão</Label>
                     <Select name="account_id" defaultValue={editingTransaction?.account_id}>
                       <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                       <SelectContent>
@@ -198,19 +257,70 @@ export default function TransactionsPage() {
                   <Select name="category_id" defaultValue={editingTransaction?.category_id}>
                     <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                     <SelectContent>
-                      {categories.map(cat => (
+                      {categories.length > 0 ? categories.map(cat => (
                         <SelectItem key={cat.id} value={cat.id}>
                           <div className="flex items-center gap-2">
                             <div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color }} />
                             {cat.name}
                           </div>
                         </SelectItem>
-                      ))}
+                      )) : <SelectItem value="default" disabled>Nenhuma categoria criada</SelectItem>}
                     </SelectContent>
                   </Select>
                 </div>
 
-                <Button type="submit" className="w-full">{editingTransaction ? "Salvar Alterações" : "Criar"}</Button>
+                {/* --- SEÇÃO DE PARCELAMENTO (APENAS NA CRIAÇÃO) --- */}
+                {!editingTransaction && (
+                  <div className="bg-muted/30 p-4 rounded-lg border border-border/50 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label className="text-base flex items-center gap-2">
+                           <Repeat className="h-4 w-4" /> Repetir / Parcelar?
+                        </Label>
+                        <p className="text-xs text-muted-foreground">Criar múltiplas transações futuras.</p>
+                      </div>
+                      <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
+                    </div>
+
+                    {isRecurring && (
+                      <div className="space-y-3 pt-2 animate-fade-in">
+                        <div className="space-y-2">
+                           <Label>Tipo de Repetição</Label>
+                           <Select value={recurrenceType} onValueChange={(v:any) => setRecurrenceType(v)}>
+                             <SelectTrigger><SelectValue /></SelectTrigger>
+                             <SelectContent>
+                               <SelectItem value="installments">Parcelado (x vezes)</SelectItem>
+                               {/* <SelectItem value="fixed">Fixo (Mensal)</SelectItem> - Desativado por enquanto */} 
+                             </SelectContent>
+                           </Select>
+                        </div>
+
+                        {recurrenceType === 'installments' && (
+                          <div className="space-y-2">
+                            <Label>Número de Parcelas</Label>
+                            <div className="flex items-center gap-4">
+                              <Input 
+                                type="number" 
+                                min="2" 
+                                max="360" 
+                                value={installments} 
+                                onChange={e => setInstallments(Number(e.target.value))} 
+                              />
+                              <div className="text-xs text-muted-foreground whitespace-nowrap">
+                                <CalendarClock className="h-3 w-3 inline mr-1" />
+                                Termina em <strong className="text-primary">{getEndDate()}</strong>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <Button type="submit" className="w-full">
+                  {editingTransaction ? "Atualizar Transação" : (isRecurring ? `Gerar ${installments} Lançamentos` : "Salvar Transação")}
+                </Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -221,7 +331,7 @@ export default function TransactionsPage() {
             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Buscar..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full sm:w-auto overflow-x-auto">
             <Button variant={typeFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('all')}>Todas</Button>
             <Button variant={typeFilter === 'income' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('income')}>Receitas</Button>
             <Button variant={typeFilter === 'expense' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('expense')}>Despesas</Button>
@@ -248,10 +358,15 @@ export default function TransactionsPage() {
               ) : (
                 filteredTransactions.map((t) => (
                   <TableRow key={t.id} className="group hover:bg-muted/30">
-                    {/* CORREÇÃO DO BUG DA DATA AQUI: fixDate() */}
                     <TableCell className="font-medium">{format(fixDate(t.date), 'dd/MM/yyyy', { locale: ptBR })}</TableCell>
-                    <TableCell>{t.description}</TableCell>
-                    <TableCell><Badge variant="secondary">{t.categories?.name || 'Geral'}</Badge></TableCell>
+                    <TableCell>
+                      {t.description}
+                      {/* Indicador visual se for parcela (detectado pelo texto) */}
+                      {t.description.match(/\(\d+\/\d+\)/) && (
+                         <Badge variant="outline" className="ml-2 text-[10px] h-4 border-purple-200 text-purple-600">Parcelado</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell><Badge variant="secondary" style={{backgroundColor: t.categories?.color ? t.categories.color + '20' : undefined, color: t.categories?.color }}>{t.categories?.name || 'Geral'}</Badge></TableCell>
                     <TableCell className="text-muted-foreground text-sm">{t.accounts?.name}</TableCell>
                     <TableCell className={`text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
                       {Number(t.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
