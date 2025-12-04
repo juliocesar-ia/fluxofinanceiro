@@ -11,8 +11,8 @@ import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import EmailConfirmation from "./pages/EmailConfirmation";
 import SubscriptionPage from "./pages/SubscriptionPage";
-import PrivacyPage from "./pages/Privacy"; // <--- NOVO
-import TermsPage from "./pages/Terms";     // <--- NOVO
+import PrivacyPage from "./pages/Privacy";
+import TermsPage from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 
 // Páginas Privadas
@@ -26,6 +26,8 @@ import CalendarPage from "./pages/Calendar";
 import InvestmentsPage from "./pages/Investments";
 import SettingsPage from "./pages/Settings";
 import PlanningPage from "./pages/Planning";
+import BenchmarkPage from "./pages/Benchmark";
+import DebtsPage from "./pages/Debts"; // <--- NOVO
 
 const queryClient = new QueryClient();
 
@@ -42,8 +44,8 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/email-confirmed" element={<EmailConfirmation />} />
             <Route path="/subscription" element={<SubscriptionPage />} />
-            <Route path="/privacy" element={<PrivacyPage />} /> {/* <--- ROTA NOVA */}
-            <Route path="/terms" element={<TermsPage />} />     {/* <--- ROTA NOVA */}
+            <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/terms" element={<TermsPage />} />
             
             {/* Rotas Protegidas */}
             <Route path="/dashboard" element={<SubscriptionGuard><Dashboard /></SubscriptionGuard>} />
@@ -56,6 +58,8 @@ const App = () => (
             <Route path="/dashboard/investments" element={<SubscriptionGuard><InvestmentsPage /></SubscriptionGuard>} />
             <Route path="/dashboard/settings" element={<SubscriptionGuard><SettingsPage /></SubscriptionGuard>} />
             <Route path="/dashboard/planning" element={<SubscriptionGuard><PlanningPage /></SubscriptionGuard>} />
+            <Route path="/dashboard/benchmark" element={<SubscriptionGuard><BenchmarkPage /></SubscriptionGuard>} />
+            <Route path="/dashboard/debts" element={<SubscriptionGuard><DebtsPage /></SubscriptionGuard>} /> {/* <--- ROTA NOVA */}
             
             <Route path="*" element={<NotFound />} />
           </Routes>
