@@ -14,18 +14,25 @@ export default defineConfig(({ mode }) => ({
     mode === 'development' && componentTagger(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'robots.txt'], // Arquivos estáticos
+      includeAssets: ['favicon.svg', 'robots.txt'],
+      
+      // --- CORREÇÃO DO ERRO AQUI ---
+      workbox: {
+        maximumFileSizeToCacheInBytes: 5000000, // Aumenta o limite para 5MB
+      },
+      // -----------------------------
+
       manifest: {
         name: 'FinancePro - Controle Financeiro',
         short_name: 'FinancePro',
         description: 'Organize suas finanças, investimentos e metas em um só lugar.',
-        theme_color: '#09090b', // Cor da barra de status (Dark)
+        theme_color: '#09090b',
         background_color: '#09090b',
-        display: 'standalone', // Remove a barra de URL do navegador
+        display: 'standalone',
         orientation: 'portrait',
         icons: [
           {
-            src: '/pwa-192x192.png', // Vamos criar esses ícones no próximo passo
+            src: '/pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any maskable'
