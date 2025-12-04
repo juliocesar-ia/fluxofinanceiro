@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Wallet, AlertTriangle, CheckCircle } from "lucide-react";
+import { Wallet, AlertTriangle, CheckCircle, Pencil, Trash2, Plus } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type Budget = {
@@ -23,7 +23,11 @@ export default function PlanningPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [spending, setSpending] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
+  
+  // Estados para Edição/Criação
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+  
   const { toast } = useToast();
 
   useEffect(() => {
@@ -35,15 +39,15 @@ export default function PlanningPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Buscar Orçamentos Existentes
+    // 1. Buscar Orçamentos
     const { data: budgetData } = await supabase
       .from('budgets')
       .select('*, categories(name, color)');
 
-    // 2. Buscar Todas as Categorias (para o select)
-    const { data: catData } = await supabase.from('categories').select('*');
+    // 2. Buscar Categorias
+    const { data: catData } = await supabase.from('categories').select('*').eq('type', 'expense');
 
-    // 3. Calcular Gastos do Mês Atual por Categoria
+    // 3. Calcular Gastos do Mês
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0,0,0,0);
@@ -55,7 +59,6 @@ export default function PlanningPage() {
       .eq('type', 'expense')
       .gte('date', startOfMonth.toISOString());
 
-    // Agrupar gastos
     const currentSpending: Record<string, number> = {};
     transData?.forEach(t => {
       if(t.category_id) {
@@ -69,6 +72,26 @@ export default function PlanningPage() {
     setLoading(false);
   };
 
+  const handleEdit = (budget: Budget) => {
+    setEditingBudget(budget);
+    setIsDialogOpen(true);
+  };
+
+  const handleNew = () => {
+    setEditingBudget(null);
+    setIsDialogOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if(!confirm("Remover este planejamento?")) return;
+    const { error } = await supabase.from('budgets').delete().eq('id', id);
+    if(error) toast({ title: "Erro ao excluir", variant: "destructive" });
+    else {
+      toast({ title: "Planejamento removido" });
+      fetchData();
+    }
+  };
+
   const handleSaveBudget = async (e: React.FormEvent) => {
     e.preventDefault();
     const formData = new FormData(e.target as HTMLFormElement);
@@ -76,18 +99,24 @@ export default function PlanningPage() {
     const amount = Number(formData.get('amount'));
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Verifica se já existe (upsert)
+    if (!user) return;
+
+    const payload = {
+      user_id: user.id,
+      category_id: categoryId,
+      amount: amount,
+      period: 'monthly'
+    };
+
+    // Upsert funciona para criar ou atualizar se a combinação user_id + category_id for única
     const { error } = await supabase
       .from('budgets')
-      .upsert({ 
-        user_id: user?.id,
-        category_id: categoryId, 
-        amount: amount 
-      }, { onConflict: 'user_id, category_id' });
+      .upsert(payload, { onConflict: 'user_id, category_id' });
 
-    if (error) toast({ title: "Erro ao salvar", variant: "destructive" });
-    else {
-      toast({ title: "Orçamento definido!" });
+    if (error) {
+      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Planejamento atualizado!" });
       setIsDialogOpen(false);
       fetchData();
     }
@@ -100,19 +129,23 @@ export default function PlanningPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Planejamento Mensal</h1>
-            <p className="text-muted-foreground">Defina limites para suas categorias e economize.</p>
+            <p className="text-muted-foreground">Defina limites e controle seus gastos por categoria.</p>
           </div>
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2"><Wallet className="h-4 w-4" /> Definir Orçamento</Button>
+              <Button className="gap-2" onClick={handleNew}>
+                <Plus className="h-4 w-4" /> Novo Orçamento
+              </Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Novo Limite de Gastos</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>{editingBudget ? "Editar Limite" : "Novo Limite de Gastos"}</DialogTitle>
+              </DialogHeader>
               <form onSubmit={handleSaveBudget} className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>Categoria</Label>
-                  <Select name="category_id" required>
+                  <Select name="category_id" defaultValue={editingBudget?.category_id} disabled={!!editingBudget}>
                     <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
                       {categories.map(cat => (
@@ -120,12 +153,13 @@ export default function PlanningPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {editingBudget && <p className="text-xs text-muted-foreground">Para mudar a categoria, exclua e crie um novo.</p>}
                 </div>
                 <div className="space-y-2">
                   <Label>Limite Mensal (R$)</Label>
-                  <Input name="amount" type="number" step="0.01" placeholder="Ex: 500.00" required />
+                  <Input name="amount" type="number" step="0.01" defaultValue={editingBudget?.amount} placeholder="Ex: 500.00" required />
                 </div>
-                <Button type="submit" className="w-full">Salvar Planejamento</Button>
+                <Button type="submit" className="w-full">Salvar</Button>
               </form>
             </DialogContent>
           </Dialog>
@@ -139,14 +173,23 @@ export default function PlanningPage() {
             const remaining = budget.amount - spent;
 
             return (
-              <Card key={budget.id} className="overflow-hidden">
+              <Card key={budget.id} className="overflow-hidden relative group">
                 <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
                   <div className="flex items-center gap-2">
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: budget.categories?.color || '#ccc' }} />
                     <CardTitle className="text-base font-medium">{budget.categories?.name}</CardTitle>
                   </div>
-                  <span className="text-sm text-muted-foreground">Meta: R$ {budget.amount}</span>
+                  
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEdit(budget)}>
+                      <Pencil className="h-3 w-3 text-muted-foreground hover:text-primary" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDelete(budget.id)}>
+                      <Trash2 className="h-3 w-3 text-muted-foreground hover:text-destructive" />
+                    </Button>
+                  </div>
                 </CardHeader>
+                
                 <CardContent>
                   <div className="flex justify-between items-end mb-2">
                     <span className="text-2xl font-bold">R$ {spent.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
@@ -157,17 +200,11 @@ export default function PlanningPage() {
                     )}
                   </div>
                   
-                  <Progress 
-                    value={percentage} 
-                    className={`h-2 ${isOver ? "bg-red-200" : ""}`} 
-                    // Nota: A cor da barra interna (indicator) é controlada pelo componente Progress ou classes globais. 
-                    // Para forçar vermelho se estourar, precisaríamos de um componente Progress customizado ou CSS inline.
-                    // Aqui usamos a cor padrão do tema (primary) que fica elegante.
-                  />
+                  <Progress value={percentage} className={`h-2 ${isOver ? "bg-red-100" : ""}`} />
                   
-                  <div className="mt-2 text-xs text-muted-foreground flex justify-between">
-                    <span>{percentage.toFixed(0)}% usado</span>
-                    <span>{remaining > 0 ? `R$ ${remaining.toFixed(2)} restantes` : `R$ ${Math.abs(remaining).toFixed(2)} excedidos`}</span>
+                  <div className="mt-2 text-xs text-muted-foreground flex justify-between font-medium">
+                    <span>{percentage.toFixed(0)}%</span>
+                    <span>Meta: R$ {budget.amount.toLocaleString('pt-BR')}</span>
                   </div>
                 </CardContent>
               </Card>
@@ -175,8 +212,10 @@ export default function PlanningPage() {
           })}
 
           {budgets.length === 0 && !loading && (
-             <div className="col-span-full py-12 text-center text-muted-foreground border-2 border-dashed rounded-xl">
-               Nenhum planejamento definido. Comece criando um limite para uma categoria.
+             <div className="col-span-full py-12 text-center text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+               <Wallet className="h-10 w-10 mx-auto mb-3 opacity-20" />
+               <p>Nenhum planejamento definido.</p>
+               <Button variant="link" onClick={handleNew}>Criar primeiro orçamento</Button>
              </div>
           )}
         </div>
