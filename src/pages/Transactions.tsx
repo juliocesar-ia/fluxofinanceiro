@@ -15,12 +15,11 @@ import {
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Search, Filter, Trash2, Pencil, Upload, FileUp, Loader2, CalendarClock, Repeat, Wand2 } from "lucide-react";
+import { Plus, Search, Trash2, Pencil, FileUp, Loader2, CalendarClock, Repeat } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import Papa from "papaparse";
-import { suggestCategory } from "@/utils/ai-logic"; // <--- Import da IA Lógica
 
 export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -29,21 +28,14 @@ export default function TransactionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   
-  // Estados do Modal
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
   
-  // Estados do Formulário
-  const [desc, setDesc] = useState(""); // Estado local para descrição
-  const [selectedCategory, setSelectedCategory] = useState<string>(""); // Estado local para categoria
-  
-  // Estados de Recorrência
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<'installments' | 'fixed'>('installments');
   const [installments, setInstallments] = useState(2);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
   const { toast } = useToast();
   const [accounts, setAccounts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -69,7 +61,6 @@ export default function TransactionsPage() {
     if (transData) setTransactions(transData);
     if (accData) setAccounts(accData);
     if (catData) setCategories(catData);
-    
     setLoading(false);
   };
 
@@ -87,45 +78,20 @@ export default function TransactionsPage() {
   const handleDelete = async (id: string) => {
     if(!confirm("Tem certeza que deseja excluir?")) return;
     const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (!error) {
-      toast({ title: "Transação removida" });
-      fetchInitialData();
-    }
+    if (!error) { toast({ title: "Transação removida" }); fetchInitialData(); }
   };
 
   const handleEdit = (t: any) => {
     setEditingTransaction(t);
-    setDesc(t.description);
-    setSelectedCategory(t.category_id || "");
     setIsRecurring(false);
     setIsDialogOpen(true);
   };
 
   const handleNew = () => {
     setEditingTransaction(null);
-    setDesc("");
-    setSelectedCategory("");
     setIsRecurring(false);
     setInstallments(2);
     setIsDialogOpen(true);
-  };
-
-  // --- INTELIGÊNCIA DE CATEGORIZAÇÃO ---
-  const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDesc = e.target.value;
-    setDesc(newDesc);
-
-    // Se estiver criando uma nova transação e a categoria ainda estiver vazia
-    if (!editingTransaction) {
-      const suggestionName = suggestCategory(newDesc);
-      if (suggestionName) {
-        // Tenta achar o ID da categoria baseada no nome sugerido
-        const cat = categories.find(c => c.name.toLowerCase() === suggestionName.toLowerCase());
-        if (cat) {
-          setSelectedCategory(cat.id);
-        }
-      }
-    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -133,16 +99,15 @@ export default function TransactionsPage() {
     const form = e.target as HTMLFormElement;
     const formData = new FormData(form);
     const { data: { user } } = await supabase.auth.getUser();
-
     if (!user) return;
 
     const baseTransaction = {
       user_id: user.id,
-      description: desc,
+      description: formData.get('description'),
       amount: Number(formData.get('amount')),
       type: formData.get('type'),
       account_id: formData.get('account_id'),
-      category_id: selectedCategory,
+      category_id: formData.get('category_id'),
       category: "Personalizada",
       date: formData.get('date') as string
     };
@@ -187,122 +152,142 @@ export default function TransactionsPage() {
     return format(end, "MMMM 'de' yyyy", { locale: ptBR });
   };
 
-  // --- LÓGICA DE IMPORTAÇÃO (CSV/OFX) ---
-  // ... (Mantida igual ao código anterior, omitida aqui para economizar espaço, mas deve estar no arquivo final)
   const triggerFileUpload = () => fileInputRef.current?.click();
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-      // (Código de importação permanece o mesmo que te passei na resposta anterior)
-      // Se precisar dele completo novamente, avise!
-      // Por brevidade, estou focando na parte da IA Lógica aqui.
-      const file = event.target.files?.[0];
-      if (!file) return;
-      setImporting(true);
-      // ... (Lógica de leitura de arquivo) ...
-      setImporting(false);
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) { setImporting(false); return; }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      const importedTransactions: any[] = [];
+
+      try {
+        if (file.name.toLowerCase().endsWith('.ofx')) {
+           const transRegex = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/g;
+           const typeRegex = /<TRNTYPE>(.*)/;
+           const dateRegex = /<DTPOSTED>(\d{8})/;
+           const amountRegex = /<TRNAMT>(.*)/;
+           const memoRegex = /<MEMO>(.*)/;
+
+           let match;
+           while ((match = transRegex.exec(text)) !== null) {
+              const block = match[1];
+              const dateRaw = block.match(dateRegex)?.[1]?.trim();
+              const amountRaw = block.match(amountRegex)?.[1]?.trim();
+              const memoRaw = block.match(memoRegex)?.[1]?.trim();
+
+              if (dateRaw && amountRaw) {
+                 const dateFormatted = `${dateRaw.substring(0,4)}-${dateRaw.substring(4,6)}-${dateRaw.substring(6,8)}`;
+                 const amount = parseFloat(amountRaw.replace(',', '.'));
+                 importedTransactions.push({
+                    user_id: user.id,
+                    description: memoRaw || "Transação Importada",
+                    amount: Math.abs(amount),
+                    type: amount < 0 ? 'expense' : 'income',
+                    date: dateFormatted,
+                    category: "Importado",
+                    account_id: accounts.length > 0 ? accounts[0].id : null
+                 });
+              }
+           }
+        } else if (file.name.toLowerCase().endsWith('.csv')) {
+           Papa.parse(text, {
+              header: true, skipEmptyLines: true,
+              complete: (results) => {
+                 results.data.forEach((row: any) => {
+                    const dateVal = row['Data'] || row['date'];
+                    const descVal = row['Descrição'] || row['Description'];
+                    const amountVal = row['Valor'] || row['Amount'];
+                    
+                    if (dateVal && amountVal) {
+                       const cleanAmount = parseFloat(String(amountVal).replace('R$', '').replace('.', '').replace(',', '.').trim());
+                       let cleanDate = dateVal;
+                       if (dateVal.includes('/')) {
+                          const parts = dateVal.split('/');
+                          if(parts.length === 3) cleanDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                       }
+                       if (!isNaN(cleanAmount)) {
+                          importedTransactions.push({
+                             user_id: user.id,
+                             description: descVal || "CSV Importado",
+                             amount: Math.abs(cleanAmount),
+                             type: cleanAmount < 0 ? 'expense' : 'income',
+                             date: cleanDate,
+                             category: "Importado",
+                             account_id: accounts.length > 0 ? accounts[0].id : null
+                          });
+                       }
+                    }
+                 });
+              }
+           });
+        }
+
+        if (importedTransactions.length > 0) {
+           const { error } = await supabase.from('transactions').insert(importedTransactions);
+           if (error) throw error;
+           toast({ title: "Importação Concluída!", description: `${importedTransactions.length} transações importadas.` });
+           fetchInitialData();
+        } else {
+           toast({ title: "Nenhuma transação encontrada", variant: "destructive" });
+        }
+      } catch (error: any) {
+        toast({ title: "Erro na Importação", description: error.message, variant: "destructive" });
+      } finally {
+        setImporting(false);
+        if(fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
-        
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Transações</h1>
-            <p className="text-muted-foreground">Gerencie todas as suas entradas e saídas.</p>
-          </div>
-          
+          <div><h1 className="text-3xl font-bold tracking-tight">Transações</h1><p className="text-muted-foreground">Gerencie todas as suas entradas e saídas.</p></div>
           <div className="flex gap-2">
             <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".ofx,.csv" className="hidden" />
-            <Button variant="outline" onClick={triggerFileUpload} disabled={importing} className="gap-2">
-               {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
-               {importing ? "Lendo..." : "Importar Extrato"}
-            </Button>
-
+            <Button variant="outline" onClick={triggerFileUpload} disabled={importing} className="gap-2">{importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}{importing ? "Lendo..." : "Importar Extrato"}</Button>
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-primary text-white hover:bg-primary/90" onClick={handleNew}>
-                  <Plus className="mr-2 h-4 w-4" /> Nova Transação
-                </Button>
-              </DialogTrigger>
+              <DialogTrigger asChild><Button className="bg-primary text-white hover:bg-primary/90" onClick={handleNew}><Plus className="mr-2 h-4 w-4" /> Nova Transação</Button></DialogTrigger>
               <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>{editingTransaction ? "Editar Transação" : "Adicionar Transação"}</DialogTitle>
-                  {!editingTransaction && <DialogDescription>Registe uma compra única ou parcelada.</DialogDescription>}
-                </DialogHeader>
+                <DialogHeader><DialogTitle>{editingTransaction ? "Editar" : "Adicionar"} Transação</DialogTitle><DialogDescription>Registe uma compra única ou parcelada.</DialogDescription></DialogHeader>
                 <form onSubmit={handleSave} className="space-y-4 py-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2"><Label>Tipo</Label><Select name="type" defaultValue={editingTransaction?.type || "expense"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expense">Despesa</SelectItem><SelectItem value="income">Receita</SelectItem></SelectContent></Select></div>
                     <div className="space-y-2"><Label>Valor</Label><Input type="number" name="amount" step="0.01" defaultValue={editingTransaction?.amount} required /></div>
                   </div>
-                  
-                  {/* CAMPO DESCRIÇÃO INTELIGENTE */}
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-2">
-                        Descrição 
-                        <Badge variant="outline" className="text-[10px] h-4 bg-blue-50 text-blue-600 border-blue-200">
-                            <Wand2 className="h-3 w-3 mr-1" /> IA Auto
-                        </Badge>
-                    </Label>
-                    <Input 
-                        name="description" 
-                        placeholder="Ex: Uber, Mercado, Netflix..." 
-                        value={desc}
-                        onChange={handleDescriptionChange} // <--- GATILHO DA IA
-                        required 
-                    />
-                  </div>
-
+                  <div className="space-y-2"><Label>Descrição</Label><Input name="description" defaultValue={editingTransaction?.description} required /></div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2"><Label>Data</Label><Input type="date" name="date" defaultValue={editingTransaction ? editingTransaction.date : new Date().toISOString().split('T')[0]} required /></div>
                     <div className="space-y-2"><Label>Conta</Label><Select name="account_id" defaultValue={editingTransaction?.account_id}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select></div>
                   </div>
-
-                  {/* CAMPO CATEGORIA (AUTO-PREENCHIDO) */}
-                  <div className="space-y-2">
-                    <Label>Categoria</Label>
-                    <Select 
-                        name="category_id" 
-                        value={selectedCategory} 
-                        onValueChange={setSelectedCategory}
-                    >
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>{categories.map(cat => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}</SelectContent>
-                    </Select>
-                  </div>
-
+                  <div className="space-y-2"><Label>Categoria</Label><Select name="category_id" defaultValue={editingTransaction?.category_id}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{categories.map(cat => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}</SelectContent></Select></div>
                   {!editingTransaction && (
                     <div className="bg-muted/30 p-4 rounded-lg border border-border/50 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-0.5"><Label className="text-base flex items-center gap-2"><Repeat className="h-4 w-4" /> Parcelar?</Label></div>
-                        <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
-                      </div>
+                      <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="text-base flex items-center gap-2"><Repeat className="h-4 w-4" /> Parcelar?</Label></div><Switch checked={isRecurring} onCheckedChange={setIsRecurring} /></div>
                       {isRecurring && (
-                        <div className="space-y-3 pt-2">
-                          <div className="space-y-2"><Label>Parcelas</Label><div className="flex items-center gap-4"><Input type="number" min="2" max="360" value={installments} onChange={e => setInstallments(Number(e.target.value))} /><div className="text-xs text-muted-foreground whitespace-nowrap"><CalendarClock className="h-3 w-3 inline mr-1" />Fim: <strong className="text-primary">{getEndDate()}</strong></div></div></div>
-                        </div>
+                        <div className="space-y-3 pt-2"><div className="space-y-2"><Label>Parcelas</Label><div className="flex items-center gap-4"><Input type="number" min="2" max="360" value={installments} onChange={e => setInstallments(Number(e.target.value))} /><div className="text-xs text-muted-foreground whitespace-nowrap"><CalendarClock className="h-3 w-3 inline mr-1" />Fim: <strong className="text-primary">{getEndDate()}</strong></div></div></div></div>
                       )}
                     </div>
                   )}
-                  <Button type="submit" className="w-full">{editingTransaction ? "Atualizar" : "Salvar"}</Button>
+                  <Button type="submit" className="w-full">{editingTransaction ? "Atualizar" : (isRecurring ? `Gerar ${installments} Lançamentos` : "Salvar")}</Button>
                 </form>
               </DialogContent>
             </Dialog>
           </div>
         </div>
 
-        {/* Lista de Transações */}
         <div className="rounded-md border border-border bg-card shadow-sm overflow-hidden">
           <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead>Data</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Conta</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="text-center">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
+            <TableHeader><TableRow className="bg-muted/50"><TableHead>Data</TableHead><TableHead>Descrição</TableHead><TableHead>Categoria</TableHead><TableHead>Conta</TableHead><TableHead className="text-right">Valor</TableHead><TableHead className="text-center">Ações</TableHead></TableRow></TableHeader>
             <TableBody>
               {loading ? ( <TableRow><TableCell colSpan={6} className="h-24 text-center">Carregando...</TableCell></TableRow> ) : filteredTransactions.length === 0 ? ( <TableRow><TableCell colSpan={6} className="h-24 text-center">Nenhuma transação.</TableCell></TableRow> ) : (
                 filteredTransactions.map((t) => (

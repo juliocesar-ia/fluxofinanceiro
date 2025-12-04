@@ -5,11 +5,10 @@ import { User } from "@supabase/supabase-js";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wallet, TrendingUp, TrendingDown, DollarSign, BrainCircuit, AlertCircle } from "lucide-react";
+import { Wallet, TrendingUp, TrendingDown, DollarSign, LogOut } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { AdBanner } from "@/components/AdBanner";
-import { generateFinancialSentiment } from "@/utils/ai-logic"; // <--- Import da IA
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -40,9 +39,6 @@ export default function Dashboard() {
   }, [navigate]);
 
   const fetchTransactions = async () => {
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1); // Inicio do mês atual para o gráfico/cálculos
-    
     const { data, error } = await supabase
       .from('transactions')
       .select('*, categories(name, color)')
@@ -52,7 +48,6 @@ export default function Dashboard() {
     else setTransactions(data || []);
   };
 
-  // Cálculos do Mês
   const currentMonth = new Date().getMonth();
   const monthTransactions = transactions.filter(t => new Date(t.date).getMonth() === currentMonth);
   
@@ -60,38 +55,20 @@ export default function Dashboard() {
   const totalExpense = monthTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + Number(t.amount), 0);
   const balance = totalIncome - totalExpense;
 
-  // --- IA INSIGHT ---
-  const sentiment = generateFinancialSentiment(totalIncome, totalExpense, monthTransactions);
-
-  // Gráfico
   const chartData = [
     { name: 'Receitas', value: totalIncome, color: '#22c55e' },
     { name: 'Despesas', value: totalExpense, color: '#ef4444' },
   ];
 
+  const fixDate = (dateString: string) => {
+    if (!dateString) return new Date();
+    return new Date(dateString + 'T12:00:00');
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>;
 
   return (
     <div className="space-y-8 animate-fade-in">
-      
-      {/* --- CARD DA IA (NOVO) --- */}
-      <Card className={`border-l-4 ${sentiment.color} shadow-sm`}>
-        <CardContent className="p-4 flex items-start gap-4">
-          <div className="p-2 bg-background rounded-full shadow-sm">
-            {sentiment.status === 'critical' ? <AlertCircle className="h-6 w-6 text-red-500" /> : <BrainCircuit className="h-6 w-6 text-primary" />}
-          </div>
-          <div>
-            <h3 className="font-semibold text-lg flex items-center gap-2">
-              {sentiment.title}
-            </h3>
-            <p className="text-muted-foreground text-sm mt-1">
-              {sentiment.message}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Cards de KPI */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card className="hover:shadow-md transition-shadow">
           <CardContent className="p-6 flex justify-between items-center">
@@ -158,7 +135,7 @@ export default function Dashboard() {
                         <TableCell className="font-medium">
                           <div className="flex flex-col">
                             <span>{t.description}</span>
-                            <span className="text-xs text-muted-foreground">{new Date(t.date).toLocaleDateString('pt-BR')}</span>
+                            <span className="text-xs text-muted-foreground">{format(fixDate(t.date), 'dd/MM/yyyy', { locale: ptBR })}</span>
                           </div>
                         </TableCell>
                         <TableCell>
