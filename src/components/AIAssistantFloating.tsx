@@ -4,14 +4,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Bot, Send, Sparkles, Loader2, ChevronDown, X } from "lucide-react";
+import { Bot, Send, Sparkles, Loader2, ChevronDown, AlertTriangle } from "lucide-react";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from "@/integrations/supabase/client";
 import { getFinancialContext, executeAIAction } from "@/utils/ai-actions";
-import { useToast } from "@/hooks/use-toast";
 
-// Tenta pegar do .env. Se não funcionar, COLE SUA CHAVE DENTRO DAS ASPAS ABAIXO:
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
+// --- ÁREA DE CONFIGURAÇÃO DA CHAVE ---
+// Cole sua chave aqui dentro das aspas para garantir que funcione
+// Exemplo: const API_KEY = "AIzaSyD_SEU_CODIGO_GIGANTE_AQUI";
+const API_KEY = "AIzaSyAq9TPiZ8Fgto1n9Rvbxfo2-uaSTZkJQG8"; 
 
 type Message = {
   id: string;
@@ -27,7 +28,6 @@ export function AIAssistantFloating() {
     { id: '1', role: 'assistant', content: 'Olá! Sou a IA do FinancePro. Posso criar transações, metas ou analisar seus gastos. O que manda?' }
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { toast } = useToast();
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -43,70 +43,60 @@ export function AIAssistantFloating() {
     setIsTyping(true);
 
     try {
-      // 1. Verificação de Segurança Básica
-      if (!API_KEY) {
-        throw new Error("Chave de API não encontrada. Verifique o arquivo .env ou cole a chave no código.");
+      // 1. Verifica se a chave foi colocada
+      if (!API_KEY || API_KEY.includes("COLE_SUA_CHAVE")) {
+        throw new Error("⚠️ Você esqueceu de colar a Chave da API na linha 14 do código.");
       }
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Você precisa estar logado.");
 
-      // 2. Busca Contexto (Dados do Usuário)
+      // 2. Busca Contexto
       const context = await getFinancialContext(user.id);
 
-      // 3. Prepara o Gemini (Conexão Direta)
+      // 3. Chama o Google Gemini
       const genAI = new GoogleGenerativeAI(API_KEY);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const systemPrompt = `
-        Você é o Assistente Executivo do FinancePro.
-        Você tem acesso aos dados do usuário e PODE MODIFICAR o sistema.
+        Você é o Assistente Financeiro do FinancePro.
+        Aja como um especialista. Se for uma ordem de criação, retorne JSON. Se for pergunta, texto.
         
-        DADOS ATUAIS DO USUÁRIO:
+        DADOS DO USUÁRIO:
         ${context}
         
-        INSTRUÇÕES DE AÇÃO:
-        Se o usuário pedir para criar, adicionar ou salvar algo, você DEVE retornar APENAS um JSON (sem markdown, apenas o objeto {}) no seguinte formato:
+        PERGUNTA: ${userMsg.content}
         
-        - Para Transação: {"tool": "create_transaction", "description": "Descrição", "amount": 0.00, "type": "expense" (ou "income"), "category": "Categoria"}
-        - Para Meta: {"tool": "create_goal", "name": "Nome", "target": 0.00}
-        - Para Dívida: {"tool": "create_debt", "name": "Nome", "total": 0.00}
-        
-        Se for apenas uma pergunta ou análise, responda em texto normal, curto e amigável. Não use JSON para respostas de texto.
-        
-        PERGUNTA DO USUÁRIO: ${userMsg.content}
+        FORMATO JSON (APENAS SE FOR AÇÃO):
+        {"tool": "create_transaction", "description": "...", "amount": 0.00, "type": "expense", "category": "..."}
       `;
 
-      // 4. Chama a IA
       const result = await model.generateContent(systemPrompt);
       const text = result.response.text();
       
-      // 5. Processa a Resposta (Texto ou Ação)
+      // 4. Processa a resposta
       let finalResponse = text;
-      
-      // Limpa formatação de código se a IA mandar (```json ... ```)
       const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
       
-      // Tenta detectar se é um JSON de ação
       if (cleanText.startsWith('{') && cleanText.includes('"tool":')) {
-         console.log("Ação Detectada:", cleanText);
          const actionResult = await executeAIAction(user.id, cleanText);
-         if (actionResult) {
-            finalResponse = actionResult;
-            // Opcional: Atualizar a página para mostrar os novos dados
-            // window.location.reload(); 
-         }
+         if (actionResult) finalResponse = actionResult;
       }
 
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: finalResponse }]);
 
     } catch (error: any) {
-      console.error("Erro IA:", error);
-      let errorMsg = "Desculpe, tive um problema técnico.";
+      console.error("ERRO REAL DA IA:", error);
       
-      if (error.message.includes("API")) errorMsg = "Erro de Configuração: Chave da API inválida.";
-      if (error.message.includes("fetch")) errorMsg = "Erro de Conexão: Verifique sua internet.";
+      // Mostra o erro real na tela para sabermos o que é
+      let errorMsg = `Erro técnico: ${error.message || error}`;
       
+      if (error.message?.includes("fetch")) {
+         errorMsg = "🚫 Bloqueio de Rede. Desative seu AdBlock ou verifique a internet.";
+      } else if (error.message?.includes("400")) {
+         errorMsg = "🔑 Chave de API Inválida. Verifique se copiou corretamente.";
+      }
+
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: errorMsg }]);
     } finally {
       setIsTyping(false);
@@ -115,84 +105,48 @@ export function AIAssistantFloating() {
 
   return (
     <>
-      {/* Botão Flutuante */}
       {!isOpen && (
         <Button 
-          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-2xl bg-gradient-to-tr from-indigo-600 to-violet-600 hover:scale-110 transition-transform z-50 animate-in zoom-in duration-300"
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:scale-110 transition-transform z-50"
           onClick={() => setIsOpen(true)}
         >
-          <Bot className="h-7 w-7 text-white" />
+          <Bot className="h-8 w-8 text-white" />
         </Button>
       )}
 
-      {/* Janela do Chat */}
       {isOpen && (
-        <Card className="fixed bottom-6 right-6 w-[90vw] md:w-[380px] h-[550px] shadow-2xl z-50 flex flex-col border-primary/20 animate-in slide-in-from-bottom-10 fade-in duration-300 rounded-2xl overflow-hidden">
-          {/* Header */}
+        <Card className="fixed bottom-6 right-6 w-[90vw] md:w-[380px] h-[500px] shadow-2xl z-50 flex flex-col border-primary/20">
           <CardHeader className="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex flex-row items-center justify-between border-b shrink-0">
-            <div className="flex items-center gap-3">
-               <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm"><Sparkles className="h-5 w-5 text-white" /></div>
-               <div>
-                 <CardTitle className="text-sm font-bold text-white">FinancePro AI</CardTitle>
-                 <p className="text-[10px] text-indigo-100 flex items-center gap-1">
-                   <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span> Online
-                 </p>
-               </div>
+            <div className="flex items-center gap-2">
+               <div className="p-2 bg-white/20 rounded-lg"><Sparkles className="h-4 w-4 text-white" /></div>
+               <CardTitle className="text-sm font-bold text-white">IA Financeira</CardTitle>
             </div>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={() => setIsOpen(false)}>
                <ChevronDown className="h-5 w-5" />
             </Button>
           </CardHeader>
           
-          {/* Mensagens */}
           <CardContent className="flex-1 p-0 overflow-hidden bg-background">
             <ScrollArea className="h-full p-4">
                <div className="space-y-4">
                   {messages.map((msg, i) => (
                      <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {msg.role === 'assistant' && (
-                          <Avatar className="h-8 w-8 border bg-indigo-50">
-                            <AvatarFallback className="text-indigo-600"><Bot className="h-4 w-4" /></AvatarFallback>
-                          </Avatar>
-                        )}
-                        <div className={`
-                          p-3 rounded-2xl text-sm max-w-[85%] shadow-sm
-                          ${msg.role === 'user' 
-                            ? 'bg-indigo-600 text-white rounded-tr-sm' 
-                            : 'bg-muted text-foreground rounded-tl-sm border'}
-                        `}>
+                        {msg.role === 'assistant' && <Avatar className="h-8 w-8 border"><AvatarFallback className="text-indigo-600"><Bot className="h-4 w-4" /></AvatarFallback></Avatar>}
+                        <div className={`p-3 rounded-2xl text-sm max-w-[85%] ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm border'}`}>
                            {msg.content}
                         </div>
                      </div>
                   ))}
-                  {isTyping && (
-                    <div className="flex gap-2 items-center text-xs text-muted-foreground ml-12 animate-pulse">
-                      <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce" />
-                      <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                      <div className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:0.4s]" />
-                    </div>
-                  )}
+                  {isTyping && <div className="text-xs text-muted-foreground ml-12 animate-pulse">Pensando...</div>}
                   <div ref={scrollRef} />
                </div>
             </ScrollArea>
           </CardContent>
 
-          {/* Input */}
           <CardFooter className="p-3 border-t bg-background shrink-0">
-             <form onSubmit={handleSend} className="flex w-full gap-2 relative">
-                <Input 
-                   value={input} 
-                   onChange={e => setInput(e.target.value)} 
-                   placeholder="Ex: Adicionar gasto de 50 no mercado..." 
-                   className="flex-1 pr-10"
-                   autoFocus
-                />
-                <Button 
-                  type="submit" 
-                  size="icon" 
-                  disabled={isTyping || !input.trim()}
-                  className="bg-indigo-600 hover:bg-indigo-700"
-                >
+             <form onSubmit={handleSend} className="flex w-full gap-2">
+                <Input value={input} onChange={e => setInput(e.target.value)} placeholder="Digite algo..." className="flex-1" autoFocus />
+                <Button type="submit" size="icon" disabled={isTyping || !input.trim()} className="bg-indigo-600 hover:bg-indigo-700">
                    {isTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </Button>
              </form>
