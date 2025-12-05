@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AIAssistantFloating } from "./AIAssistantFloating";
 import {
   Popover,
   PopoverContent,
@@ -303,6 +304,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
         
         <InstallPWA />
+        <AIAssistantFloating />
         
       </div>
     </div>
