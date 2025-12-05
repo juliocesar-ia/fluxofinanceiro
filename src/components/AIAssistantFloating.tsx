@@ -8,10 +8,10 @@ import { Bot, Send, Sparkles, Loader2, ChevronDown, AlertTriangle } from "lucide
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from "@/integrations/supabase/client";
 import { getFinancialContext, executeAIAction } from "@/utils/ai-actions";
+import { useToast } from "@/hooks/use-toast";
 
 // --- ÁREA DE CONFIGURAÇÃO DA CHAVE ---
-// Cole sua chave aqui dentro das aspas para garantir que funcione
-// Exemplo: const API_KEY = "AIzaSyD_SEU_CODIGO_GIGANTE_AQUI";
+// Cole sua chave aqui dentro das aspas (Começa com AIzaSy...)
 const API_KEY = "AIzaSyAq9TPiZ8Fgto1n9Rvbxfo2-uaSTZkJQG8"; 
 
 type Message = {
@@ -28,6 +28,7 @@ export function AIAssistantFloating() {
     { id: '1', role: 'assistant', content: 'Olá! Sou a IA do FinancePro. Posso criar transações, metas ou analisar seus gastos. O que manda?' }
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollIntoView({ behavior: "smooth" });
@@ -56,7 +57,9 @@ export function AIAssistantFloating() {
 
       // 3. Chama o Google Gemini
       const genAI = new GoogleGenerativeAI(API_KEY);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      // TENTA O MODELO MAIS ESTÁVEL (001)
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
 
       const systemPrompt = `
         Você é o Assistente Financeiro do FinancePro.
@@ -88,13 +91,15 @@ export function AIAssistantFloating() {
     } catch (error: any) {
       console.error("ERRO REAL DA IA:", error);
       
-      // Mostra o erro real na tela para sabermos o que é
       let errorMsg = `Erro técnico: ${error.message || error}`;
       
+      // Tratamento de Erros Comuns
       if (error.message?.includes("fetch")) {
-         errorMsg = "🚫 Bloqueio de Rede. Desative seu AdBlock ou verifique a internet.";
-      } else if (error.message?.includes("400")) {
-         errorMsg = "🔑 Chave de API Inválida. Verifique se copiou corretamente.";
+         errorMsg = "🚫 Bloqueio de Rede. Se estiver no trabalho/faculdade, o firewall pode estar bloqueando o Google.";
+      } else if (error.message?.includes("400") || error.message?.includes("API key")) {
+         errorMsg = "🔑 Chave de API Inválida. Verifique se copiou corretamente do Google AI Studio.";
+      } else if (error.message?.includes("404")) {
+         errorMsg = "⚠️ Modelo não encontrado. Tente rodar 'npm install @google/generative-ai@latest' no terminal.";
       }
 
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: errorMsg }]);
@@ -131,13 +136,13 @@ export function AIAssistantFloating() {
                <div className="space-y-4">
                   {messages.map((msg, i) => (
                      <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {msg.role === 'assistant' && <Avatar className="h-8 w-8 border"><AvatarFallback className="text-indigo-600"><Bot className="h-4 w-4" /></AvatarFallback></Avatar>}
+                        {msg.role === 'assistant' && <Avatar className="h-8 w-8 border"><AvatarFallback className="text-indigo-600"><Bot /></AvatarFallback></Avatar>}
                         <div className={`p-3 rounded-2xl text-sm max-w-[85%] ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm border'}`}>
                            {msg.content}
                         </div>
                      </div>
                   ))}
-                  {isTyping && <div className="text-xs text-muted-foreground ml-12 animate-pulse">Pensando...</div>}
+                  {isTyping && <div className="text-xs ml-12 animate-pulse">Pensando...</div>}
                   <div ref={scrollRef} />
                </div>
             </ScrollArea>
