@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { 
   LayoutDashboard, Wallet, CreditCard, PieChart, 
   Target, Settings, LogOut, Menu, Bell, Repeat, Calendar, TrendingUp,
-  Calculator, User, Eye, EyeOff, BarChart3, TrendingDown // <--- Adicionei TrendingDown e BarChart3
+  Calculator, User, Eye, EyeOff, BarChart3, TrendingDown, Crown // <--- Crown importado
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -94,14 +94,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { icon: LayoutDashboard, label: "Visão Geral", path: "/dashboard" },
     { icon: Wallet, label: "Transações", path: "/dashboard/transactions" },
     { icon: Calculator, label: "Planejamento", path: "/dashboard/planning" },
-    { icon: BarChart3, label: "Comparativo", path: "/dashboard/benchmark" }, // <--- Recuperado
-    { icon: TrendingDown, label: "Dívidas", path: "/dashboard/debts" },       // <--- Recuperado
+    { icon: BarChart3, label: "Comparativo", path: "/dashboard/benchmark" },
+    { icon: TrendingDown, label: "Dívidas", path: "/dashboard/debts" },
     { icon: Calendar, label: "Calendário", path: "/dashboard/calendar" },
     { icon: CreditCard, label: "Cartões e Contas", path: "/dashboard/cards" },
     { icon: TrendingUp, label: "Investimentos", path: "/dashboard/investments" },
     { icon: Repeat, label: "Assinaturas", path: "/dashboard/subscriptions" },
     { icon: Target, label: "Metas", path: "/dashboard/goals" },
     { icon: PieChart, label: "Relatórios", path: "/dashboard/reports" },
+    { icon: Crown, label: "Meu Plano", path: "/subscription" }, // <--- AQUI ESTÁ A ABA NOVA
     { icon: Settings, label: "Configurações", path: "/dashboard/settings" },
   ];
 
@@ -206,7 +207,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Botão de Privacidade */}
             <Button 
                 variant="ghost" 
                 size="icon" 
