@@ -297,7 +297,7 @@ export default function TransactionsPage() {
       <div className="space-y-6 animate-fade-in pb-20">
         
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div><h1 className="text-3xl font-bold tracking-tight">Transações</h1><p className="text-muted-foreground">Gerencie entradas e saídas.</p></div>
+          <div><h1 className="text-3xl font-bold tracking-tight">Transações</h1><p className="text-muted-foreground">Controle detalhado de fluxo.</p></div>
           
           <div className="flex gap-2 items-center">
             {selectedIds.length > 0 && (
