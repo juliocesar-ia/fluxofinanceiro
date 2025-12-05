@@ -28,25 +28,30 @@ export function useSubscription() {
 
       if (profile) {
         const now = new Date();
-        // Se trial_ends_at for nulo, assume uma data antiga para bloquear
         const trialEnd = profile.trial_ends_at ? new Date(profile.trial_ends_at) : new Date(0);
         
-        // Verifica se hoje é antes do fim do teste
-        const isTrialValid = isAfter(trialEnd, now);
+        // Verifica se a data ainda é válida (futuro)
+        const isDateValid = isAfter(trialEnd, now);
         
-        // Lógica: Libera se for Assinante OU (Trial E Data Válida)
-        if (profile.subscription_status === 'active') {
+        // Regra Simplificada:
+        // 1. Se pagou (active), entra.
+        // 2. Se a data é futura (seja trial ou bônus), entra.
+        if (profile.subscription_status === 'active' || isDateValid) {
           setHasAccess(true);
-        } else if (profile.subscription_status === 'trial' && isTrialValid) {
-          setHasAccess(true);
+          
+          // Calcula dias apenas para mostrar na UI se não for vitalício
+          if (profile.subscription_status !== 'active') {
+             const diffTime = Math.abs(trialEnd.getTime() - now.getTime());
+             const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+             setDaysLeft(diffDays);
+          }
         } else {
-          // Qualquer outra coisa bloqueia (expired, trial vencido, etc)
           setHasAccess(false);
         }
       }
     } catch (error) {
-      console.error("Erro ao verificar assinatura:", error);
-      setHasAccess(false); // Bloqueia por segurança em caso de erro
+      console.error("Erro de assinatura:", error);
+      setHasAccess(false);
     } finally {
       setLoading(false);
     }

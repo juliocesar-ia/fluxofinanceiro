@@ -4,12 +4,26 @@ import { useSubscription } from "@/hooks/use-subscription";
 import { Loader2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { supabase } from "@/integrations/supabase/client"; // <--- Importar Supabase
 
 export default function SubscriptionGuard({ children }: { children: React.ReactNode }) {
   const { loading, hasAccess } = useSubscription();
   const navigate = useNavigate();
 
-  // Se estiver carregando, mostra loading
+  // Função de Logout Real
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/auth");
+  };
+
+  useEffect(() => {
+    if (!loading && !hasAccess) {
+      // Opcional: Se quiser forçar a URL a mudar para /subscription visualmente
+      // navigate("/subscription"); 
+      // Mas manteremos o bloqueio visual aqui mesmo para evitar loops
+    }
+  }, [loading, hasAccess, navigate]);
+
   if (loading) {
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-background gap-4">
@@ -19,7 +33,7 @@ export default function SubscriptionGuard({ children }: { children: React.ReactN
     );
   }
 
-  // Se NÃO tem acesso, mostra o BLOQUEIO (em vez de tela branca)
+  // Tela de Bloqueio (Paywall)
   if (!hasAccess) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background p-4 animate-fade-in">
@@ -40,14 +54,16 @@ export default function SubscriptionGuard({ children }: { children: React.ReactN
             <Button 
               size="lg" 
               className="w-full font-bold" 
-              onClick={() => navigate("/subscription")} // Redireciona manual
+              onClick={() => navigate("/subscription")}
             >
               Ver Planos e Liberar Acesso
             </Button>
+            
+            {/* Botão de Sair Corrigido */}
             <Button 
               variant="link" 
-              className="text-xs text-muted-foreground"
-              onClick={() => navigate("/auth")}
+              className="text-xs text-muted-foreground hover:text-destructive"
+              onClick={handleLogout} 
             >
               Sair da conta
             </Button>
@@ -57,6 +73,5 @@ export default function SubscriptionGuard({ children }: { children: React.ReactN
     );
   }
 
-  // Se tem acesso, mostra o site normal
   return <>{children}</>;
 }
