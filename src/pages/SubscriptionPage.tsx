@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
 // Substitua pelo seu ID real do Stripe se tiver
-const STRIPE_PRICE_ID = "price_SEU_ID_AQUI";
+const STRIPE_PRICE_ID = "price_1Sa6PuCFnHZiIXy4ymDpUuLF";
 
 export default function SubscriptionPage() {
   const [loading, setLoading] = useState(false);
