@@ -4,10 +4,15 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Bot, Send, Sparkles, Loader2, ChevronDown, ShieldCheck } from "lucide-react";
+import { Bot, Send, Sparkles, Loader2, ChevronDown, AlertTriangle } from "lucide-react";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from "@/integrations/supabase/client";
 import { getFinancialContext, executeAIAction } from "@/utils/ai-actions";
 import { useToast } from "@/hooks/use-toast";
+
+// --- ÁREA DE PERIGO: COLE SUA CHAVE AQUI ---
+// Não apague as aspas! A chave deve ficar dentro delas.
+const API_KEY = "AIzaSyAq9TPiZ8Fgto1n9Rvbxfo2-uaSTZkJQG8"; 
 
 type Message = {
   id: string;
@@ -20,7 +25,7 @@ export function AIAssistantFloating() {
   const [isTyping, setIsTyping] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'assistant', content: 'Olá! Sou a IA Segura do FinancePro. Estou rodando no servidor para proteger seus dados. Como posso ajudar?' }
+    { id: '1', role: 'assistant', content: 'Olá! Sou a IA do FinancePro. Posso criar transações, metas ou analisar seus gastos. O que manda?' }
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -39,47 +44,58 @@ export function AIAssistantFloating() {
     setIsTyping(true);
 
     try {
+      // 1. Validação da Chave
+      if (!API_KEY || API_KEY.includes("COLE_SUA_CHAVE")) {
+        throw new Error("⚠️ PARE! Você esqueceu de colar a chave na linha 13 do código.");
+      }
+
+      // 2. Validação do Usuário
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Você precisa estar logado.");
 
-      // 1. Busca os dados do usuário (Contexto)
+      // 3. Pega o contexto
       const context = await getFinancialContext(user.id);
 
-      // 2. Chama a Função Segura no Servidor (Sem expor chaves)
-      const { data, error } = await supabase.functions.invoke('ai-advisor', {
-        body: { message: userMsg.content, context }
-      });
+      // 4. Configura a IA
+      const genAI = new GoogleGenerativeAI(API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      if (error) {
-        console.error("Erro da Edge Function:", error);
-        throw new Error("O servidor da IA não respondeu. Verifique se a chave foi configurada no Supabase Secrets.");
-      }
+      const systemPrompt = `
+        Você é o Assistente Executivo do FinancePro.
+        
+        DADOS DO USUÁRIO:
+        ${context}
+        
+        INSTRUÇÕES:
+        Se for para criar algo, retorne APENAS o JSON: {"tool": "create_transaction", ...}
+        Se for pergunta, responda texto curto.
+        
+        PERGUNTA: ${userMsg.content}
+      `;
 
-      if (!data?.reply) {
-        throw new Error("Resposta vazia do servidor.");
-      }
-
-      let replyText = data.reply;
-
-      // 3. Processa Ações (JSON) se a IA mandar
-      const cleanText = replyText.replace(/```json/g, '').replace(/```/g, '').trim();
+      // 5. Chama o Google
+      const result = await model.generateContent(systemPrompt);
+      const text = result.response.text();
+      
+      // 6. Processa Resposta
+      let finalResponse = text;
+      const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      
       if (cleanText.startsWith('{') && cleanText.includes('"tool":')) {
          const actionResult = await executeAIAction(user.id, cleanText);
-         if (actionResult) replyText = actionResult;
+         if (actionResult) finalResponse = actionResult;
       }
 
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: replyText }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: finalResponse }]);
 
     } catch (error: any) {
-      console.error("ERRO IA:", error);
-      let errorMsg = "Erro de conexão com o servidor seguro.";
-      if (error.message) errorMsg = error.message;
+      console.error("ERRO:", error);
+      let errorMsg = `Erro: ${error.message}`;
       
-      setMessages(prev => [...prev, { 
-        id: Date.now().toString(), 
-        role: 'assistant', 
-        content: `⚠️ ${errorMsg}` 
-      }]);
+      if (error.toString().includes("404")) errorMsg = "Erro: Modelo de IA não encontrado. Verifique a versão da biblioteca.";
+      if (error.toString().includes("fetch")) errorMsg = "Erro de Conexão. Verifique sua internet ou AdBlock.";
+
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: errorMsg }]);
     } finally {
       setIsTyping(false);
     }
@@ -89,24 +105,19 @@ export function AIAssistantFloating() {
     <>
       {!isOpen && (
         <Button 
-          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 hover:scale-110 transition-transform z-50 animate-in zoom-in duration-300"
+          className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:scale-110 transition-transform z-50"
           onClick={() => setIsOpen(true)}
         >
-          <Bot className="h-7 w-7 text-white" />
+          <Bot className="h-8 w-8 text-white" />
         </Button>
       )}
 
       {isOpen && (
-        <Card className="fixed bottom-6 right-6 w-[90vw] md:w-[380px] h-[550px] shadow-2xl z-50 flex flex-col border-primary/20 animate-in slide-in-from-bottom-10 fade-in duration-300 rounded-2xl overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-emerald-600 to-teal-600 p-4 flex flex-row items-center justify-between border-b shrink-0">
+        <Card className="fixed bottom-6 right-6 w-[90vw] md:w-[380px] h-[500px] shadow-2xl z-50 flex flex-col border-primary/20">
+          <CardHeader className="bg-gradient-to-r from-indigo-600 to-violet-600 p-4 flex flex-row items-center justify-between border-b shrink-0">
             <div className="flex items-center gap-2">
-               <div className="p-2 bg-white/20 rounded-lg backdrop-blur-sm"><ShieldCheck className="h-5 w-5 text-white" /></div>
-               <div>
-                 <CardTitle className="text-sm font-bold text-white">FinancePro AI</CardTitle>
-                 <p className="text-[10px] text-emerald-100 flex items-center gap-1">
-                   <span className="w-1.5 h-1.5 bg-green-300 rounded-full animate-pulse"></span> Conexão Segura
-                 </p>
-               </div>
+               <div className="p-2 bg-white/20 rounded-lg"><Sparkles className="h-4 w-4 text-white" /></div>
+               <CardTitle className="text-sm font-bold text-white">IA Financeira</CardTitle>
             </div>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 rounded-full" onClick={() => setIsOpen(false)}>
                <ChevronDown className="h-5 w-5" />
@@ -118,50 +129,22 @@ export function AIAssistantFloating() {
                <div className="space-y-4">
                   {messages.map((msg, i) => (
                      <div key={i} className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        {msg.role === 'assistant' && (
-                          <Avatar className="h-8 w-8 border bg-emerald-50">
-                            <AvatarFallback className="text-emerald-600"><Bot className="h-4 w-4" /></AvatarFallback>
-                          </Avatar>
-                        )}
-                        <div className={`
-                          p-3 rounded-2xl text-sm max-w-[85%] shadow-sm
-                          ${msg.role === 'user' 
-                            ? 'bg-emerald-600 text-white rounded-tr-sm' 
-                            : 'bg-muted text-foreground rounded-tl-sm border'}
-                        `}>
+                        {msg.role === 'assistant' && <Avatar className="h-8 w-8 border"><AvatarFallback><Bot /></AvatarFallback></Avatar>}
+                        <div className={`p-3 rounded-2xl text-sm max-w-[85%] ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-muted text-foreground rounded-tl-sm border'}`}>
                            {msg.content}
                         </div>
                      </div>
                   ))}
-                  {isTyping && (
-                    <div className="flex gap-2 items-center text-xs text-muted-foreground ml-12 animate-pulse">
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" />
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                      <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce [animation-delay:0.4s]" />
-                    </div>
-                  )}
+                  {isTyping && <div className="text-xs ml-12 animate-pulse">Pensando...</div>}
                   <div ref={scrollRef} />
                </div>
             </ScrollArea>
           </CardContent>
 
           <CardFooter className="p-3 border-t bg-background shrink-0">
-             <form onSubmit={handleSend} className="flex w-full gap-2 relative">
-                <Input 
-                   value={input} 
-                   onChange={e => setInput(e.target.value)} 
-                   placeholder="Digite sua dúvida..." 
-                   className="flex-1 pr-10"
-                   autoFocus
-                />
-                <Button 
-                  type="submit" 
-                  size="icon" 
-                  disabled={isTyping || !input.trim()}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                >
-                   {isTyping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
+             <form onSubmit={handleSend} className="flex w-full gap-2">
+                <Input value={input} onChange={e => setInput(e.target.value)} placeholder="Digite algo..." className="flex-1" autoFocus />
+                <Button type="submit" size="icon" disabled={isTyping} className="bg-indigo-600 hover:bg-indigo-700"><Send className="h-4 w-4" /></Button>
              </form>
           </CardFooter>
         </Card>
