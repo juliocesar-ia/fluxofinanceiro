@@ -304,7 +304,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
         
         <InstallPWA />
-        <AIAssistantFloating />
+      
         
       </div>
     </div>
