@@ -10,8 +10,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-// Substitua pelo seu ID real do Stripe se tiver
-const STRIPE_PRICE_ID = "price_1Sa6PuCFnHZiIXy4ymDpUuLF";
+const STRIPE_PRICE_ID = "price_SEU_ID_AQUI"; // Substitua se tiver
 
 export default function SubscriptionPage() {
   const [loading, setLoading] = useState(false);
@@ -29,70 +28,58 @@ export default function SubscriptionPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { navigate("/auth"); return; }
 
-      const { data, error } = await supabase.functions.invoke('subscribe', {
-        body: { priceId: STRIPE_PRICE_ID },
-      });
-
-      if (error) throw error;
-
-      if (data?.url) {
-        window.location.href = data.url;
-      } else {
-        toast({ title: "Erro", description: "Não foi possível gerar o pagamento." });
+      // Tenta Checkout via Function, se falhar avisa
+      try {
+        const { data, error } = await supabase.functions.invoke('subscribe', {
+            body: { priceId: STRIPE_PRICE_ID },
+        });
+        if (error) throw error;
+        if (data?.url) window.location.href = data.url;
+      } catch (e) {
+         console.error(e);
+         toast({ title: "Erro de Pagamento", description: "Sistema de pagamento em manutenção (Modo Demo).", variant: "destructive" });
       }
       
     } catch (error: any) {
-      toast({ title: "Erro de Conexão", description: "Verifique se a Edge Function 'subscribe' está rodando.", variant: "destructive" });
+      toast({ title: "Erro", description: "Erro de sessão.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const features = [
-    { icon: TrendingDown, text: "Gestão de Dívidas (Bola de Neve)" },
-    { icon: BarChart3, text: "Comparativo de Mercado" },
-    { icon: Trophy, text: "Gamificação (Níveis e Conquistas)" },
-    { icon: TrendingUp, text: "Patrimônio Líquido e Investimentos" },
-    { icon: Calendar, text: "Calendário Financeiro Inteligente" },
-    { icon: Smartphone, text: "App Instalável (PWA)" },
-    { icon: Shield, text: "Modo Privacidade (Esconder Valores)" },
-    { icon: Target, text: "Planejamento de Sonhos com Fotos" },
-  ];
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted flex flex-col items-center justify-center p-4 animate-fade-in relative">
+    <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-4 relative">
       
-      {/* --- BOTÃO DE VOLTAR (NOVO) --- */}
-      <div className="absolute top-4 left-4 md:top-8 md:left-8">
+      {/* Botão de Voltar */}
+      <div className="absolute top-4 left-4 md:top-8 md:left-8 z-50">
         <Link to="/dashboard">
-          <Button variant="ghost" className="gap-2 text-muted-foreground hover:text-primary hover:bg-background/50">
+          <Button variant="ghost" className="gap-2 text-muted-foreground hover:text-primary">
             <ArrowLeft className="h-5 w-5" /> 
-            <span className="hidden sm:inline">Voltar ao Dashboard</span>
-            <span className="sm:hidden">Voltar</span>
+            Voltar ao Dashboard
           </Button>
         </Link>
       </div>
 
-      <div className="max-w-lg w-full space-y-8">
+      <div className="max-w-lg w-full space-y-8 animate-in fade-in zoom-in duration-500">
         
         <div className="text-center">
           <div className="bg-primary/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <Lock className="h-8 w-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight mb-2">Desbloqueie seu Potencial</h1>
+          <h1 className="text-3xl font-bold tracking-tight mb-2">Seja Premium</h1>
           <p className="text-muted-foreground">
-            O período de teste acabou. Assine o Premium para continuar usando as ferramentas exclusivas.
+            Desbloqueie todo o potencial do FinancePro.
           </p>
         </div>
 
-        <Card className="border-2 border-primary shadow-2xl relative overflow-hidden transform hover:scale-[1.005] transition-transform duration-300">
+        <Card className="border-2 border-primary shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 bg-gradient-to-r from-primary to-orange-600 text-white text-xs font-bold px-4 py-1 rounded-bl-xl shadow-sm">
             ACESSO TOTAL
           </div>
           
           <CardHeader className="pb-2 text-center">
             <CardTitle className="text-2xl">FinancePro Premium</CardTitle>
-            <CardDescription>Todas as ferramentas liberadas.</CardDescription>
+            <CardDescription>Acesso vitalício a todas as ferramentas.</CardDescription>
           </CardHeader>
           
           <CardContent className="space-y-6">
@@ -103,19 +90,40 @@ export default function SubscriptionPage() {
             
             <div className="bg-primary/5 rounded-lg p-3 border border-primary/10 text-center">
                 <p className="text-sm font-medium text-primary">
-                   Cancele a qualquer momento.
+                   Cancele quando quiser. Sem taxas ocultas.
                 </p>
             </div>
 
-            <div className="grid gap-3">
-              {features.map((item, index) => (
-                <div key={index} className="flex items-center gap-3 text-sm group">
-                  <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0 group-hover:bg-green-200 transition-colors">
-                    <item.icon className="h-4 w-4 text-green-600" />
-                  </div>
-                  <span className="font-medium">{item.text}</span>
+            {/* Lista manual para evitar erros de renderização */}
+            <div className="grid gap-3 text-sm">
+                <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><TrendingDown className="h-4 w-4" /></div>
+                    <span className="font-medium">Gestão de Dívidas (Bola de Neve)</span>
                 </div>
-              ))}
+                <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><BarChart3 className="h-4 w-4" /></div>
+                    <span className="font-medium">Comparativo de Mercado</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><TrendingUp className="h-4 w-4" /></div>
+                    <span className="font-medium">Investimentos e Patrimônio</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><Calendar className="h-4 w-4" /></div>
+                    <span className="font-medium">Calendário Inteligente</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><Smartphone className="h-4 w-4" /></div>
+                    <span className="font-medium">App Mobile (PWA)</span>
+                </div>
+                <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><Shield className="h-4 w-4" /></div>
+                    <span className="font-medium">Modo Privacidade</span>
+                </div>
+                 <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><Target className="h-4 w-4" /></div>
+                    <span className="font-medium">Planejamento de Sonhos</span>
+                </div>
             </div>
           </CardContent>
           

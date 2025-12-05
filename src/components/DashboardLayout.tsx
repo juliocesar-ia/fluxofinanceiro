@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { 
   LayoutDashboard, Wallet, CreditCard, PieChart, 
   Target, Settings, LogOut, Menu, Bell, Repeat, Calendar, TrendingUp,
-  Calculator, User, Eye, EyeOff, BarChart3, TrendingDown, Crown // <--- Crown importado
+  Calculator, User, Eye, EyeOff, BarChart3, TrendingDown, Crown 
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
@@ -102,7 +102,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { icon: Repeat, label: "Assinaturas", path: "/dashboard/subscriptions" },
     { icon: Target, label: "Metas", path: "/dashboard/goals" },
     { icon: PieChart, label: "Relatórios", path: "/dashboard/reports" },
-    { icon: Crown, label: "Meu Plano", path: "/subscription" }, // <--- AQUI ESTÁ A ABA NOVA
+    { icon: Crown, label: "Meu Plano", path: "/subscription" },
     { icon: Settings, label: "Configurações", path: "/dashboard/settings" },
   ];
 
