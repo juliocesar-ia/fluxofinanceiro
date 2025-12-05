@@ -5,9 +5,13 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Bot, Send, Sparkles, Loader2, ChevronDown, X } from "lucide-react";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { supabase } from "@/integrations/supabase/client";
 import { getFinancialContext, executeAIAction } from "@/utils/ai-actions";
 import { useToast } from "@/hooks/use-toast";
+
+// Tenta pegar do .env. Se não funcionar, COLE SUA CHAVE DENTRO DAS ASPAS ABAIXO:
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ""; 
 
 type Message = {
   id: string;
@@ -20,7 +24,7 @@ export function AIAssistantFloating() {
   const [isTyping, setIsTyping] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
-    { id: '1', role: 'assistant', content: 'Olá! Sou sua IA Financeira Segura. Posso analisar seus dados ou criar registros para você. Como ajudo?' }
+    { id: '1', role: 'assistant', content: 'Olá! Sou a IA do FinancePro. Posso criar transações, metas ou analisar seus gastos. O que manda?' }
   ]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -39,40 +43,71 @@ export function AIAssistantFloating() {
     setIsTyping(true);
 
     try {
+      // 1. Verificação de Segurança Básica
+      if (!API_KEY) {
+        throw new Error("Chave de API não encontrada. Verifique o arquivo .env ou cole a chave no código.");
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Você precisa estar logado.");
 
-      // 1. Busca os dados do usuário (Contexto)
+      // 2. Busca Contexto (Dados do Usuário)
       const context = await getFinancialContext(user.id);
 
-      // 2. Chama a Edge Function Segura (Backend)
-      const { data, error } = await supabase.functions.invoke('ai-advisor', {
-        body: { message: userMsg.content, context }
-      });
+      // 3. Prepara o Gemini (Conexão Direta)
+      const genAI = new GoogleGenerativeAI(API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-      if (error) throw error;
+      const systemPrompt = `
+        Você é o Assistente Executivo do FinancePro.
+        Você tem acesso aos dados do usuário e PODE MODIFICAR o sistema.
+        
+        DADOS ATUAIS DO USUÁRIO:
+        ${context}
+        
+        INSTRUÇÕES DE AÇÃO:
+        Se o usuário pedir para criar, adicionar ou salvar algo, você DEVE retornar APENAS um JSON (sem markdown, apenas o objeto {}) no seguinte formato:
+        
+        - Para Transação: {"tool": "create_transaction", "description": "Descrição", "amount": 0.00, "type": "expense" (ou "income"), "category": "Categoria"}
+        - Para Meta: {"tool": "create_goal", "name": "Nome", "target": 0.00}
+        - Para Dívida: {"tool": "create_debt", "name": "Nome", "total": 0.00}
+        
+        Se for apenas uma pergunta ou análise, responda em texto normal, curto e amigável. Não use JSON para respostas de texto.
+        
+        PERGUNTA DO USUÁRIO: ${userMsg.content}
+      `;
 
-      let replyText = data.reply;
-
-      // 3. Verifica se a IA mandou executar uma ação (JSON)
-      // Limpa possíveis formatações de código do markdown
-      const cleanReply = replyText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-      if (cleanReply.startsWith('{') && cleanReply.includes('"tool":')) {
-         const actionResult = await executeAIAction(user.id, cleanReply);
+      // 4. Chama a IA
+      const result = await model.generateContent(systemPrompt);
+      const text = result.response.text();
+      
+      // 5. Processa a Resposta (Texto ou Ação)
+      let finalResponse = text;
+      
+      // Limpa formatação de código se a IA mandar (```json ... ```)
+      const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      // Tenta detectar se é um JSON de ação
+      if (cleanText.startsWith('{') && cleanText.includes('"tool":')) {
+         console.log("Ação Detectada:", cleanText);
+         const actionResult = await executeAIAction(user.id, cleanText);
          if (actionResult) {
-            replyText = actionResult;
-            // Opcional: Atualizar a página para mostrar a mudança
+            finalResponse = actionResult;
+            // Opcional: Atualizar a página para mostrar os novos dados
             // window.location.reload(); 
          }
       }
 
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: replyText }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: finalResponse }]);
 
     } catch (error: any) {
       console.error("Erro IA:", error);
-      toast({ title: "Erro na IA", description: "Não foi possível conectar ao servidor seguro.", variant: "destructive" });
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: "Desculpe, tive um problema técnico. Tente novamente." }]);
+      let errorMsg = "Desculpe, tive um problema técnico.";
+      
+      if (error.message.includes("API")) errorMsg = "Erro de Configuração: Chave da API inválida.";
+      if (error.message.includes("fetch")) errorMsg = "Erro de Conexão: Verifique sua internet.";
+      
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: errorMsg }]);
     } finally {
       setIsTyping(false);
     }
@@ -100,7 +135,7 @@ export function AIAssistantFloating() {
                <div>
                  <CardTitle className="text-sm font-bold text-white">FinancePro AI</CardTitle>
                  <p className="text-[10px] text-indigo-100 flex items-center gap-1">
-                   <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span> Online e Seguro
+                   <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span> Online
                  </p>
                </div>
             </div>
@@ -148,7 +183,7 @@ export function AIAssistantFloating() {
                 <Input 
                    value={input} 
                    onChange={e => setInput(e.target.value)} 
-                   placeholder="Ex: Gastei 50 no mercado..." 
+                   placeholder="Ex: Adicionar gasto de 50 no mercado..." 
                    className="flex-1 pr-10"
                    autoFocus
                 />
