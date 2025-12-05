@@ -6,7 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, BarChart, Bar 
 } from 'recharts';
 import { ArrowUpRight, ArrowDownRight, TrendingUp, Zap, Trophy, Crown, Wallet, Scale, Filter } from "lucide-react";
 import { AdBanner } from "@/components/AdBanner";
@@ -27,11 +27,7 @@ export default function Dashboard() {
   const currentYear = new Date().getFullYear().toString();
   const currentMonth = (new Date().getMonth() + 1).toString();
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [selectedMonth, setSelectedMonth] = useState(currentMonth); // "all" para ano todo
-
-  // Dados Patrimoniais
-  const [netWorth, setNetWorth] = useState({ total: 0, assets: 0, liabilities: 0 });
-  const [wealthDistribution, setWealthDistribution] = useState<any[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonth);
 
   // Gamificação
   const [userName, setUserName] = useState("Investidor");
@@ -44,14 +40,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     initializeDashboard();
-  }, [selectedMonth, selectedYear]); // Recarrega quando muda o filtro
+  }, [selectedMonth, selectedYear]);
 
   const initializeDashboard = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 0. Definir datas de início e fim com base no filtro
+    // 0. Definir datas
     let startDate, endDate;
     const yearInt = parseInt(selectedYear);
     
@@ -59,12 +55,12 @@ export default function Dashboard() {
       startDate = startOfYear(new Date(yearInt, 0, 1)).toISOString();
       endDate = endOfYear(new Date(yearInt, 0, 1)).toISOString();
     } else {
-      const monthInt = parseInt(selectedMonth) - 1; // JS meses são 0-11
+      const monthInt = parseInt(selectedMonth) - 1;
       startDate = startOfMonth(new Date(yearInt, monthInt, 1)).toISOString();
       endDate = endOfMonth(new Date(yearInt, monthInt, 1)).toISOString();
     }
 
-    // 1. Buscar Nome do Usuário e Perfil
+    // 1. Perfil
     const { data: profile } = await supabase
       .from('profiles')
       .select('full_name, current_streak, last_login')
@@ -74,7 +70,7 @@ export default function Dashboard() {
     if (profile?.full_name) setUserName(profile.full_name.split(' ')[0]);
     else if (user.user_metadata.full_name) setUserName(user.user_metadata.full_name.split(' ')[0]);
 
-    // 2. Transações e Fluxo (FILTRADO PELA DATA)
+    // 2. Transações (Filtradas)
     const { data: transData } = await supabase
       .from('transactions')
       .select('*, categories(name, color)')
@@ -82,36 +78,16 @@ export default function Dashboard() {
       .gte('date', startDate)
       .lte('date', endDate)
       .order('date', { ascending: true });
-    
-    // 3. Contas, Investimentos e Dívidas (Saldos Atuais - Snapshot)
-    const { data: accounts } = await supabase.from('accounts').select('balance');
-    const totalAccounts = accounts?.reduce((acc, a) => acc + Number(a.balance), 0) || 0;
 
-    const { data: investments } = await supabase.from('investments').select('quantity, purchase_price, current_price, type');
-    const totalInvestments = investments?.reduce((acc, i) => acc + (Number(i.quantity) * Number(i.current_price || i.purchase_price)), 0) || 0;
-
-    const { data: debts } = await supabase.from('debts').select('current_balance');
-    const totalDebts = debts?.reduce((acc, d) => acc + Number(d.current_balance), 0) || 0;
-
-    // --- CÁLCULO DE PATRIMÔNIO ---
-    const totalAssets = totalAccounts + totalInvestments;
-    const finalNetWorth = totalAssets - totalDebts;
-    
-    setNetWorth({ total: finalNetWorth, assets: totalAssets, liabilities: totalDebts });
-
-    setWealthDistribution([
-      { name: 'Em Conta', value: totalAccounts, color: '#22c55e' },
-      { name: 'Investido', value: totalInvestments, color: '#3b82f6' },
-      { name: 'Dívidas', value: totalDebts, color: '#ef4444' }
-    ].filter(i => i.value > 0));
+    // 3. Investimentos (Apenas para Gamificação)
+    const { count: investCount } = await supabase.from('investments').select('*', { count: 'exact', head: true }).eq('user_id', user.id);
 
     if (transData) {
       setTransactions(transData);
       calculateSummary(transData);
     }
 
-    // Gamificação
-    await handleGamification(user.id, profile, calculateSummary(transData || []), (investments?.length || 0));
+    await handleGamification(user.id, profile, calculateSummary(transData || []), investCount || 0);
     
     setLoading(false);
   };
@@ -147,7 +123,6 @@ export default function Dashboard() {
 
     setBadges(earnedBadges);
 
-    // Streak Logic
     if (profile) {
       const today = new Date().toISOString().split('T')[0];
       const lastLogin = profile.last_login;
@@ -170,7 +145,6 @@ export default function Dashboard() {
     type: t.type
   }));
 
-  // Correção de Data
   const fixDate = (dateString: string) => {
     if (!dateString) return new Date();
     return new Date(dateString + 'T12:00:00');
@@ -200,7 +174,7 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                {/* --- FILTROS DE DATA (NOVO) --- */}
+                {/* FILTROS DE DATA */}
                 <div className="flex gap-2 bg-background/50 p-1 rounded-lg border backdrop-blur-sm">
                     <Select value={selectedMonth} onValueChange={setSelectedMonth}>
                         <SelectTrigger className="w-[130px] h-9 border-0 bg-transparent focus:ring-0">
@@ -208,18 +182,9 @@ export default function Dashboard() {
                         </SelectTrigger>
                         <SelectContent>
                             <SelectItem value="all">Ano Completo</SelectItem>
-                            <SelectItem value="1">Janeiro</SelectItem>
-                            <SelectItem value="2">Fevereiro</SelectItem>
-                            <SelectItem value="3">Março</SelectItem>
-                            <SelectItem value="4">Abril</SelectItem>
-                            <SelectItem value="5">Maio</SelectItem>
-                            <SelectItem value="6">Junho</SelectItem>
-                            <SelectItem value="7">Julho</SelectItem>
-                            <SelectItem value="8">Agosto</SelectItem>
-                            <SelectItem value="9">Setembro</SelectItem>
-                            <SelectItem value="10">Outubro</SelectItem>
-                            <SelectItem value="11">Novembro</SelectItem>
-                            <SelectItem value="12">Dezembro</SelectItem>
+                            {Array.from({length: 12}, (_, i) => (
+                                <SelectItem key={i} value={(i+1).toString()}>{format(new Date(2024, i, 1), 'MMMM', { locale: ptBR })}</SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                     <div className="w-[1px] h-6 bg-border my-auto"></div>
@@ -258,59 +223,6 @@ export default function Dashboard() {
                 <span className="text-[10px] text-muted-foreground font-bold uppercase">Badges</span>
              </div>
           </div>
-        </div>
-
-        {/* --- PAINEL PATRIMÔNIO --- */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 text-white border-none shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-32 bg-primary/20 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none"></div>
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-slate-300">
-                        <Scale className="h-5 w-5" /> Patrimônio Líquido (Atual)
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex flex-col md:flex-row justify-between items-end gap-6">
-                        <div>
-                            <div className="text-5xl font-bold tracking-tight text-white mb-1">
-                                <PrivacyDisplay>{formatCurrency(netWorth.total)}</PrivacyDisplay>
-                            </div>
-                            <p className="text-sm text-slate-400">Sua riqueza real (Ativos - Passivos)</p>
-                        </div>
-                        <div className="flex gap-4 text-sm w-full md:w-auto">
-                            <div className="bg-white/10 p-3 rounded-lg flex-1 md:flex-none">
-                                <span className="block text-slate-400 text-xs uppercase mb-1">Ativos</span>
-                                <span className="text-green-400 font-bold text-lg flex items-center gap-1">
-                                    <ArrowUpRight className="h-4 w-4" /> 
-                                    <PrivacyDisplay blur={false}>{formatCurrency(netWorth.assets)}</PrivacyDisplay>
-                                </span>
-                            </div>
-                            <div className="bg-white/10 p-3 rounded-lg flex-1 md:flex-none">
-                                <span className="block text-slate-400 text-xs uppercase mb-1">Passivos</span>
-                                <span className="text-red-400 font-bold text-lg flex items-center gap-1">
-                                    <ArrowDownRight className="h-4 w-4" /> 
-                                    <PrivacyDisplay blur={false}>{formatCurrency(netWorth.liabilities)}</PrivacyDisplay>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Distribuição</CardTitle></CardHeader>
-                <CardContent className="h-[180px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                            <Pie data={wealthDistribution} cx="50%" cy="50%" innerRadius={40} outerRadius={60} paddingAngle={5} dataKey="value">
-                                {wealthDistribution.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}
-                            </Pie>
-                            <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                            <Legend />
-                        </PieChart>
-                    </ResponsiveContainer>
-                </CardContent>
-            </Card>
         </div>
 
         {/* KPIs Mensais */}
