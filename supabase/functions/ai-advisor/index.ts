@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { GoogleGenerativeAI } from "https://esm.sh/@google/generative-ai@0.1.3"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,43 +6,64 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Permite acesso do seu site
+  // 1. Trata CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Pega a chave que vamos configurar no Passo 2
+    // 2. Pega a chave do cofre (Secrets)
     const apiKey = Deno.env.get('GEMINI_API_KEY')
-    if (!apiKey) throw new Error('Chave da API não configurada no servidor')
+    if (!apiKey) {
+      throw new Error('Chave GEMINI_API_KEY não encontrada no servidor.')
+    }
 
     const { message, context } = await req.json()
 
-    // Chama o Google Gemini direto do servidor (Sem bloqueios)
-    const genAI = new GoogleGenerativeAI(apiKey)
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-
-    const prompt = `
+    // 3. Monta o Prompt
+    const systemPrompt = `
       Você é o Assistente Financeiro do FinancePro.
-      Contexto do Usuário: ${context}
+      CONTEXTO DO USUÁRIO: ${context}
+      PERGUNTA: ${message}
       
-      Responda à pergunta: "${message}"
-      
-      IMPORTANTE:
-      - Se o usuário pedir para criar algo (transação, meta, dívida), retorne APENAS um JSON puro neste formato:
-        {"tool": "create_transaction", "description": "...", "amount": 0.00, "type": "expense", "category": "..."}
-      - Se for pergunta, responda em texto curto e útil.
+      REGRAS:
+      - Se for para criar algo, retorne APENAS JSON: {"tool": "create_transaction", ...}
+      - Se for pergunta, responda texto curto.
     `
 
-    const result = await model.generateContent(prompt)
-    const responseText = result.response.text()
+    // 4. Chama a API do Google via FETCH (Sem biblioteca)
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: systemPrompt }]
+          }]
+        })
+      }
+    )
+
+    const data = await response.json()
+
+    // Verifica se o Google retornou erro
+    if (data.error) {
+      throw new Error(`Erro do Google: ${data.error.message}`)
+    }
+
+    // 5. Extrai a resposta
+    const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text || "Não entendi."
 
     return new Response(
-      JSON.stringify({ reply: responseText }),
+      JSON.stringify({ reply: replyText }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
+    console.error("ERRO NA FUNCTION:", error) // Isso vai aparecer nos logs do Supabase
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
