@@ -28,6 +28,8 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { InstallPWA } from "./InstallPWA";
 import { usePrivacy } from "@/context/privacy-context";
 
+// ⚠️ IMPORTANTE: A importação da IA foi removida daqui para não quebrar o site
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -303,7 +305,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
         
         <InstallPWA />
-        
       </div>
     </div>
   );
