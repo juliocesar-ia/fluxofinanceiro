@@ -18,7 +18,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, parseISO, isToday, isYesterday, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-// Novos componentes para o calendário brasileiro
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -57,8 +56,7 @@ export default function TransactionsPage() {
   const [cards, setCards] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
-  // CORREÇÃO CRÍTICA: Inicializa com a data local (Brasil) formatada
-  // 'yyyy-MM-dd' garante que o banco receba a data certa sem conversão de fuso
+  // Inicializa o formulário com a data de HOJE (YYYY-MM-DD)
   const [formData, setFormData] = useState({
     description: "", 
     amount: "", 
@@ -71,6 +69,7 @@ export default function TransactionsPage() {
 
   useEffect(() => { fetchAllData(); }, [month]);
 
+  // Efeito para preencher o formulário ao editar ou limpar ao criar novo
   useEffect(() => {
     if (editingId) {
       const tx = transactions.find(t => t.id === editingId);
@@ -92,7 +91,6 @@ export default function TransactionsPage() {
         });
       }
     } else {
-      // CORREÇÃO: Reseta o formulário sempre com a data de HOJE correta
       setFormData({
         description: "", amount: "", date: format(new Date(), 'yyyy-MM-dd'),
         type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
@@ -106,17 +104,19 @@ export default function TransactionsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Filtra do dia 01 até o último dia do mês selecionado
-    const start = format(startOfMonth(month), 'yyyy-MM-dd');
-    const end = format(endOfMonth(month), 'yyyy-MM-dd');
+    // --- CORREÇÃO DO FILTRO ---
+    // start: Início do dia 01 (ex: 2023-10-01 00:00:00)
+    const start = startOfMonth(month).toISOString();
+    // end: Fim do último dia (ex: 2023-10-31 23:59:59.999)
+    const end = endOfMonth(month).toISOString();
 
     const [transRes, accRes, cardRes, catRes] = await Promise.all([
       supabase.from('transactions')
         .select(`*, categories(name, color), accounts(name), credit_cards(name)`)
         .eq('user_id', user.id)
-        .gte('date', start)
-        .lte('date', end)
-        .order('date', { ascending: false }), // Mais recentes primeiro
+        .gte('date', start) // Maior ou igual ao início do mês
+        .lte('date', end)   // Menor ou igual ao FIM ABSOLUTO do mês
+        .order('date', { ascending: false }),
       supabase.from('accounts').select('*'),
       supabase.from('credit_cards').select('*'),
       supabase.from('categories').select('*').order('name')
@@ -155,18 +155,16 @@ export default function TransactionsPage() {
       category: "Personalizada" 
     };
 
-    let error = null;
-
     try {
       if (editingId) {
-        const { error: err } = await supabase.from('transactions').update(basePayload).eq('id', editingId);
-        error = err;
+        const { error } = await supabase.from('transactions').update(basePayload).eq('id', editingId);
+        if (error) throw error;
       } else {
         if (formData.is_installment && formData.type === 'expense') {
           const batch = [];
           const groupId = crypto.randomUUID();
           
-          // Lógica robusta de datas para parcelas (sem UTC)
+          // Correção da data para parcelas
           const [year, month, day] = formData.date.split('-').map(Number);
           const initialDate = new Date(year, month - 1, day);
           
@@ -183,20 +181,16 @@ export default function TransactionsPage() {
               is_paid: i === 0 ? basePayload.is_paid : false
             });
           }
-          const { error: err } = await supabase.from('transactions').insert(batch);
-          error = err;
+          const { error } = await supabase.from('transactions').insert(batch);
+          if (error) throw error;
         } else {
-          const { error: err } = await supabase.from('transactions').insert(basePayload);
-          error = err;
+          const { error } = await supabase.from('transactions').insert(basePayload);
+          if (error) throw error;
         }
       }
 
-      if (error) throw error;
-
       toast({ title: editingId ? "Atualizado com sucesso!" : "Transação criada!" });
       setIsSheetOpen(false);
-      
-      // Recarrega os dados imediatamente para mostrar na lista
       fetchAllData(); 
 
     } catch (err: any) {
@@ -232,13 +226,15 @@ export default function TransactionsPage() {
       return matchesSearch && matchesType;
     })
     .reduce((groups: any, t) => {
-      const date = t.date;
-      if (!groups[date]) groups[date] = [];
-      groups[date].push(t);
+      // Agrupamento por dia (YYYY-MM-DD)
+      const dateKey = t.date.split('T')[0]; 
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(t);
       return groups;
     }, {});
 
   const formatDateHeader = (dateStr: string) => {
+    if (!dateStr) return "Data desconhecida";
     const [year, month, day] = dateStr.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     
@@ -300,7 +296,6 @@ export default function TransactionsPage() {
                       </div>
                     </div>
                     
-                    {/* NOVO: Calendário Brasileiro no lugar do Input Nativo */}
                     <div className="space-y-2 flex flex-col">
                       <Label>Data</Label>
                       <Popover>
