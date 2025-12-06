@@ -28,7 +28,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { InstallPWA } from "./InstallPWA";
 import { usePrivacy } from "@/context/privacy-context";
 
-// ⚠️ IMPORTANTE: A importação da IA foi removida daqui para não quebrar o site
+// ⚠️ REMOVI A IMPORTAÇÃO DA IA AQUI
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -305,6 +305,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
         
         <InstallPWA />
+        
+        {/* ⚠️ AQUI ESTAVA O PROBLEMA: A IA FOI REMOVIDA DE VEZ */}
       </div>
     </div>
   );
