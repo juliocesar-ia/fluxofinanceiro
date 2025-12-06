@@ -56,11 +56,11 @@ export default function TransactionsPage() {
   const [cards, setCards] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
-  // CORREÇÃO 1: Inicializar com data local para evitar erro de fuso horário
+  // CORREÇÃO 1: Usar data local formatada para evitar erro de UTC/Fuso Horário
   const [formData, setFormData] = useState({
     description: "", 
     amount: "", 
-    date: format(new Date(), 'yyyy-MM-dd'),
+    date: format(new Date(), 'yyyy-MM-dd'), // Garante a data correta no Brasil
     type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
     observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
   });
@@ -90,7 +90,7 @@ export default function TransactionsPage() {
         });
       }
     } else {
-      // CORREÇÃO 1: Resetar também com data local
+      // Resetar form com data local correta
       setFormData({
         description: "", amount: "", date: format(new Date(), 'yyyy-MM-dd'),
         type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
@@ -104,6 +104,7 @@ export default function TransactionsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // Garante que o filtro pegue o mês inteiro corretamente
     const start = format(startOfMonth(month), 'yyyy-MM-dd');
     const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
@@ -162,7 +163,9 @@ export default function TransactionsPage() {
         if (formData.is_installment && formData.type === 'expense') {
           const batch = [];
           const groupId = crypto.randomUUID();
-          const initialDate = new Date(formData.date + 'T12:00:00');
+          // Ajuste para garantir que a data do parcelamento também respeite o local
+          const initialDateParts = formData.date.split('-');
+          const initialDate = new Date(Number(initialDateParts[0]), Number(initialDateParts[1]) - 1, Number(initialDateParts[2]));
           
           for (let i = 0; i < formData.installments_count; i++) {
             const nextDate = new Date(initialDate);
@@ -170,7 +173,7 @@ export default function TransactionsPage() {
             
             batch.push({
               ...basePayload,
-              date: nextDate.toISOString().split('T')[0],
+              date: format(nextDate, 'yyyy-MM-dd'),
               installment_id: groupId,
               installment_number: i + 1,
               installment_total: formData.installments_count,
@@ -231,7 +234,10 @@ export default function TransactionsPage() {
     }, {});
 
   const formatDateHeader = (dateStr: string) => {
-    const date = parseISO(dateStr);
+    // Corrige problema de visualização de data ao renderizar "Ontem/Hoje"
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    
     if (isToday(date)) return "Hoje";
     if (isYesterday(date)) return "Ontem";
     return format(date, "EEEE, d 'de' MMMM", { locale: ptBR });
@@ -290,7 +296,7 @@ export default function TransactionsPage() {
                       </div>
                     </div>
                     
-                    {/* CORREÇÃO 2: Substituição do Input type=date pelo Calendário Shadcn */}
+                    {/* CORREÇÃO 2: Componente de Calendário Brasileiro (pt-BR) */}
                     <div className="space-y-2 flex flex-col">
                       <Label>Data</Label>
                       <Popover>
@@ -302,6 +308,7 @@ export default function TransactionsPage() {
                               !formData.date && "text-muted-foreground"
                             )}
                           >
+                            {/* Exibe a data formatada corretamente */}
                             {formData.date ? (
                               format(parseISO(formData.date), "PPP", { locale: ptBR })
                             ) : (
@@ -313,9 +320,11 @@ export default function TransactionsPage() {
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
+                            // Converte string YYYY-MM-DD para Date object
                             selected={formData.date ? parseISO(formData.date) : undefined}
                             onSelect={(date) => date && setFormData({ ...formData, date: format(date, "yyyy-MM-dd") })}
                             initialFocus
+                            locale={ptBR}
                           />
                         </PopoverContent>
                       </Popover>
