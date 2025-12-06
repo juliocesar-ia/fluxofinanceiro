@@ -18,7 +18,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, parseISO, isToday, isYesterday, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-// Novos componentes importados para o calendário brasileiro
+// Novos componentes para o calendário brasileiro
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -57,7 +57,8 @@ export default function TransactionsPage() {
   const [cards, setCards] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
-  // CORREÇÃO CRÍTICA: Inicializa com a data local (Brasil) formatada, evitando erro de fuso horário (UTC)
+  // CORREÇÃO CRÍTICA: Inicializa com a data local (Brasil) formatada
+  // 'yyyy-MM-dd' garante que o banco receba a data certa sem conversão de fuso
   const [formData, setFormData] = useState({
     description: "", 
     amount: "", 
@@ -70,7 +71,6 @@ export default function TransactionsPage() {
 
   useEffect(() => { fetchAllData(); }, [month]);
 
-  // Ao abrir o modal de edição ou nova transação
   useEffect(() => {
     if (editingId) {
       const tx = transactions.find(t => t.id === editingId);
@@ -106,7 +106,7 @@ export default function TransactionsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Garante que o filtro pegue do dia 01 até o último dia do mês corretamente
+    // Filtra do dia 01 até o último dia do mês selecionado
     const start = format(startOfMonth(month), 'yyyy-MM-dd');
     const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
@@ -116,7 +116,7 @@ export default function TransactionsPage() {
         .eq('user_id', user.id)
         .gte('date', start)
         .lte('date', end)
-        .order('date', { ascending: false }), // Ordena do mais recente para o mais antigo
+        .order('date', { ascending: false }), // Mais recentes primeiro
       supabase.from('accounts').select('*'),
       supabase.from('credit_cards').select('*'),
       supabase.from('categories').select('*').order('name')
@@ -166,7 +166,7 @@ export default function TransactionsPage() {
           const batch = [];
           const groupId = crypto.randomUUID();
           
-          // Lógica robusta de datas para parcelas
+          // Lógica robusta de datas para parcelas (sem UTC)
           const [year, month, day] = formData.date.split('-').map(Number);
           const initialDate = new Date(year, month - 1, day);
           
@@ -176,7 +176,7 @@ export default function TransactionsPage() {
             
             batch.push({
               ...basePayload,
-              date: format(nextDate, 'yyyy-MM-dd'), // Garante formato correto na parcela
+              date: format(nextDate, 'yyyy-MM-dd'),
               installment_id: groupId,
               installment_number: i + 1,
               installment_total: formData.installments_count,
@@ -195,7 +195,9 @@ export default function TransactionsPage() {
 
       toast({ title: editingId ? "Atualizado com sucesso!" : "Transação criada!" });
       setIsSheetOpen(false);
-      fetchAllData(); // Atualiza a lista imediatamente
+      
+      // Recarrega os dados imediatamente para mostrar na lista
+      fetchAllData(); 
 
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -215,7 +217,6 @@ export default function TransactionsPage() {
 
   const openNew = () => {
     setEditingId(null);
-    // Reinicia o form com a data de hoje correta
     setFormData({
       description: "", amount: "", date: format(new Date(), 'yyyy-MM-dd'),
       type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
@@ -227,7 +228,6 @@ export default function TransactionsPage() {
   const groupedTransactions = transactions
     .filter(t => {
       const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
-      // Ajuste para garantir que typeFilter funcione se você implementar filtros visuais depois
       const matchesType = typeFilter === "all" || t.type === typeFilter;
       return matchesSearch && matchesType;
     })
@@ -300,7 +300,7 @@ export default function TransactionsPage() {
                       </div>
                     </div>
                     
-                    {/* NOVO SELETOR DE DATA: CALENDÁRIO PT-BR */}
+                    {/* NOVO: Calendário Brasileiro no lugar do Input Nativo */}
                     <div className="space-y-2 flex flex-col">
                       <Label>Data</Label>
                       <Popover>
