@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge"; // <--- ESTA LINHA ESTAVA FALTANDO!
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Accordion,
@@ -10,7 +11,7 @@ import {
 } from "@/components/ui/accordion";
 import { 
   ArrowRight, CheckCircle2, TrendingUp, Shield, Smartphone, 
-  PieChart, Wallet, Trophy, Target, Star, Play
+  Zap, PieChart, Wallet, Trophy, Target, Star, Play
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -94,6 +95,7 @@ export default function Landing() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/20 rounded-full blur-[120px] -z-10 opacity-50"></div>
         
         <div className="container mx-auto px-6 text-center">
+          {/* AQUI ESTAVA O PROBLEMA: Badge sendo usado sem importação */}
           <Badge variant="outline" className="mb-6 px-4 py-1.5 text-sm border-primary/30 bg-primary/5 text-primary animate-in fade-in slide-in-from-bottom-4 duration-700">
              <Star className="h-3.5 w-3.5 mr-2 fill-primary" /> A escolha inteligente para seu bolso
           </Badge>
