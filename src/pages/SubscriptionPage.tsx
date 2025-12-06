@@ -10,7 +10,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-const STRIPE_PRICE_ID = "price_SEU_ID_AQUI"; // Substitua se tiver
+const STRIPE_PRICE_ID = "price_1Sa6PuCFnHZiIXy4ymDpUuLF"; // Substitua se tiver
 
 export default function SubscriptionPage() {
   const [loading, setLoading] = useState(false);
