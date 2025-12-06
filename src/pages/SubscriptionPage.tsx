@@ -3,15 +3,15 @@ import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
-  Lock, LogOut, Loader2, TrendingUp, 
-  Calendar, Target, TrendingDown, BarChart3, 
+  CheckCircle, Lock, Sparkles, LogOut, Loader2, TrendingUp, 
+  Calendar, PieChart, Target, Wallet, TrendingDown, BarChart3, 
   Smartphone, Shield, ArrowLeft 
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-// Substitua pelo seu ID de preço real do Stripe (ex: price_1Sa...)
-const STRIPE_PRICE_ID = "price_1Sa6PuCFnHZiIXy4ymDpUuLF"; 
+// ⚠️ ATENÇÃO: Crie o preço de R$ 14,99 no Stripe e cole o ID aqui!
+const STRIPE_PRICE_ID = "price_1SbSfUCFnHZiIXy4DJM6sV8x"; 
 
 export default function SubscriptionPage() {
   const [loading, setLoading] = useState(false);
@@ -26,35 +26,22 @@ export default function SubscriptionPage() {
   const handleSubscribe = async () => {
     setLoading(true);
     try {
-      // 1. Verificar se o usuário está logado
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { 
-        navigate("/auth"); 
-        return; 
-      }
+      if (!session) { navigate("/auth"); return; }
 
-      // 2. Chamar a Edge Function 'subscribe' para criar a sessão do Stripe
-      const { data, error } = await supabase.functions.invoke('subscribe', {
-          body: { priceId: STRIPE_PRICE_ID },
-      });
-
-      if (error) throw error;
-      
-      // 3. Redirecionar para o Checkout do Stripe se a URL for retornada
-      if (data?.url) {
-          window.location.href = data.url;
-          return;
-      } else {
-        throw new Error("URL de checkout não retornada.");
+      try {
+        const { data, error } = await supabase.functions.invoke('subscribe', {
+            body: { priceId: STRIPE_PRICE_ID },
+        });
+        if (error) throw error;
+        if (data?.url) window.location.href = data.url;
+      } catch (e) {
+         console.error(e);
+         toast({ title: "Erro de Pagamento", description: "Verifique sua conexão ou tente mais tarde.", variant: "destructive" });
       }
       
     } catch (error: any) {
-         console.error("Erro ao iniciar pagamento:", error);
-         toast({ 
-           title: "Erro ao iniciar assinatura", 
-           description: "Não foi possível conectar ao sistema de pagamento. Tente novamente.", 
-           variant: "destructive" 
-         });
+      toast({ title: "Erro", description: "Erro de sessão.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -63,7 +50,6 @@ export default function SubscriptionPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-4 relative">
       
-      {/* Botão de Voltar */}
       <div className="absolute top-4 left-4 md:top-8 md:left-8 z-50">
         <Link to="/dashboard">
           <Button variant="ghost" className="gap-2 text-muted-foreground hover:text-primary">
@@ -87,27 +73,26 @@ export default function SubscriptionPage() {
 
         <Card className="border-2 border-primary shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 bg-gradient-to-r from-primary to-orange-600 text-white text-xs font-bold px-4 py-1 rounded-bl-xl shadow-sm">
-            ACESSO TOTAL
+            MELHOR ESCOLHA
           </div>
           
           <CardHeader className="pb-2 text-center">
             <CardTitle className="text-2xl">FinancePro Premium</CardTitle>
-            <CardDescription>Acesso vitalício a todas as ferramentas.</CardDescription>
+            <CardDescription>Acesso completo a todas as ferramentas.</CardDescription>
           </CardHeader>
           
           <CardContent className="space-y-6">
             <div className="flex items-baseline justify-center gap-1">
-              <span className="text-5xl font-extrabold tracking-tight">R$ 5,00</span>
+              <span className="text-5xl font-extrabold tracking-tight">R$ 14,99</span>
               <span className="text-muted-foreground font-medium">/mês</span>
             </div>
             
             <div className="bg-primary/5 rounded-lg p-3 border border-primary/10 text-center">
                 <p className="text-sm font-medium text-primary">
-                   Cancele quando quiser. Sem taxas ocultas.
+                   3 dias grátis. Cancele quando quiser.
                 </p>
             </div>
 
-            {/* Lista de Benefícios */}
             <div className="grid gap-3 text-sm">
                 <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><TrendingDown className="h-4 w-4" /></div>
@@ -147,7 +132,7 @@ export default function SubscriptionPage() {
               onClick={handleSubscribe}
               disabled={loading}
             >
-              {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Assinar Agora"}
+              {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : "Iniciar Teste Grátis"}
             </Button>
             
             <div className="flex items-center justify-center w-full text-xs text-muted-foreground gap-4">
