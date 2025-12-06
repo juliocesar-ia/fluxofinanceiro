@@ -21,7 +21,7 @@ import {
   ChevronRight, ChevronDown, CheckCircle 
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format, addMonths, isBefore } from "date-fns";
+import { format, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import Papa from "papaparse";
 
@@ -54,9 +54,9 @@ export default function TransactionsPage() {
   
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
-  
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -64,6 +64,7 @@ export default function TransactionsPage() {
   
   const [isRecurring, setIsRecurring] = useState(false);
   const [isFixed, setIsFixed] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<'installments' | 'fixed'>('installments');
   const [installments, setInstallments] = useState(2);
 
   const { toast } = useToast();
@@ -99,7 +100,11 @@ export default function TransactionsPage() {
     setLoading(false);
   };
 
-  // --- LÓGICA DE AGRUPAMENTO ---
+  const fixDate = (dateString: string) => {
+    if (!dateString) return new Date();
+    return new Date(dateString + 'T12:00:00');
+  };
+
   const groupTransactions = () => {
     let filtered = rawTransactions.filter(t => {
       const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -151,8 +156,6 @@ export default function TransactionsPage() {
     }));
   };
 
-  // --- AÇÕES ---
-
   const handleTogglePaid = async (e: React.MouseEvent, id: string, currentStatus: boolean) => {
     e.stopPropagation();
     const { error } = await supabase.from('transactions').update({ is_paid: !currentStatus }).eq('id', id);
@@ -160,6 +163,21 @@ export default function TransactionsPage() {
       setRawTransactions(prev => prev.map(t => t.id === id ? { ...t, is_paid: !currentStatus } : t));
       toast({ title: !currentStatus ? "Pago!" : "Pendente" });
     }
+  };
+
+  const handleEdit = (t: any) => {
+    setEditingTransaction(t);
+    setIsRecurring(false);
+    setIsFixed(t.is_fixed || false);
+    setIsDialogOpen(true);
+  };
+
+  const handleNew = () => {
+    setEditingTransaction(null);
+    setIsRecurring(false);
+    setIsFixed(false);
+    setInstallments(2);
+    setIsDialogOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -179,7 +197,7 @@ export default function TransactionsPage() {
       category: "Personalizada",
       date: formData.get('date') as string,
       is_fixed: isFixed,
-      // Se for novo, nasce Pendente (false). Se for edição, mantém o status atual.
+      // Se editando, mantém status. Se novo, nasce PENDENTE (false)
       is_paid: editingTransaction ? editingTransaction.is_paid : false 
     };
 
@@ -191,7 +209,7 @@ export default function TransactionsPage() {
       error = updateError;
     } else {
       // CRIAÇÃO
-      if (isRecurring) {
+      if (isRecurring && recurrenceType === 'installments') {
         const groupId = crypto.randomUUID();
         const transactionsToInsert = [];
         const initialDate = new Date(baseTransaction.date + 'T12:00:00');
@@ -218,8 +236,9 @@ export default function TransactionsPage() {
       toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Salvo com sucesso!" });
+      setEditingTransaction(null); // Limpa edição
       setIsDialogOpen(false);
-      fetchInitialData();
+      fetchInitialData(); // Recarrega tudo
     }
   };
 
@@ -247,23 +266,6 @@ export default function TransactionsPage() {
     else { toast({ title: "Excluídos!" }); setSelectedIds([]); fetchInitialData(); }
   };
 
-  // --- HELPERS ---
-  const handleEdit = (t: any) => {
-    setEditingTransaction(t);
-    setIsRecurring(false);
-    setIsFixed(t.is_fixed || false); // Garante que o switch venha correto
-    setIsDialogOpen(true);
-  };
-
-  const handleNew = () => {
-    setEditingTransaction(null);
-    setIsRecurring(false);
-    setIsFixed(false);
-    setInstallments(2);
-    setIsDialogOpen(true);
-  };
-
-  const fixDate = (d: string) => new Date(d + 'T12:00:00');
   const getEndDate = () => format(addMonths(new Date(), installments - 1), "MMMM 'de' yyyy", { locale: ptBR });
   
   const triggerFileUpload = () => fileInputRef.current?.click();
@@ -332,26 +334,19 @@ export default function TransactionsPage() {
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-20">
-        
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div><h1 className="text-3xl font-bold tracking-tight">Transações</h1><p className="text-muted-foreground">Gerencie entradas e saídas.</p></div>
-          
           <div className="flex gap-2 items-center">
-            {selectedIds.length > 0 && (
-              <Button variant="destructive" size="sm" onClick={handleBatchDelete}><Trash2 className="mr-2 h-4 w-4" /> Excluir ({selectedIds.length})</Button>
-            )}
+            {selectedIds.length > 0 && <Button variant="destructive" size="sm" onClick={handleBatchDelete}><Trash2 className="mr-2 h-4 w-4" /> Excluir ({selectedIds.length})</Button>}
             <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".ofx,.csv" className="hidden" />
             <Button variant="outline" onClick={triggerFileUpload} disabled={importing} className="gap-2"><FileUp className="h-4 w-4" /> <span className="hidden sm:inline">Importar</span></Button>
 
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild><Button className="bg-primary text-white hover:bg-primary/90" onClick={handleNew}><Plus className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Nova</span></Button></DialogTrigger>
               <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{editingTransaction ? "Editar Transação" : "Nova Transação"}</DialogTitle>
-                    {!editingTransaction && <DialogDescription>Registe uma compra única ou parcelada.</DialogDescription>}
-                </DialogHeader>
+                <DialogHeader><DialogTitle>{editingTransaction ? "Editar" : "Adicionar"} Transação</DialogTitle></DialogHeader>
                 
-                {/* AQUI ESTÁ A CORREÇÃO: key={editingTransaction?.id} FORÇA O FORM A RESETAR */}
+                {/* --- FORMULÁRIO COM CHAVE PARA FORÇAR RESET --- */}
                 <form key={editingTransaction ? editingTransaction.id : 'new'} onSubmit={handleSave} className="space-y-4 py-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2"><Label>Tipo</Label><Select name="type" defaultValue={editingTransaction?.type || "expense"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expense">Despesa</SelectItem><SelectItem value="income">Receita</SelectItem></SelectContent></Select></div>
@@ -364,7 +359,6 @@ export default function TransactionsPage() {
                   </div>
                   <div className="space-y-2"><Label>Categoria</Label><Select name="category_id" defaultValue={editingTransaction?.category_id}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{categories.map(cat => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}</SelectContent></Select></div>
                   
-                  {/* OPÇÕES (Sem Pago?) */}
                   <div className="grid grid-cols-1 gap-4">
                      <div className="bg-muted/30 p-3 rounded-lg border flex items-center justify-between">
                         <div className="space-y-0.5"><Label className="flex items-center gap-2"><Anchor className="h-3 w-3" /> É Fixa?</Label></div>
@@ -374,10 +368,7 @@ export default function TransactionsPage() {
 
                   {!editingTransaction && (
                     <div className="bg-muted/30 p-3 rounded-lg border flex flex-col gap-3">
-                       <div className="flex items-center justify-between">
-                           <div className="space-y-0.5"><Label className="flex items-center gap-2"><Repeat className="h-3 w-3" /> Parcelar?</Label></div>
-                           <Switch checked={isRecurring} onCheckedChange={setIsRecurring} />
-                       </div>
+                       <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="flex items-center gap-2"><Repeat className="h-3 w-3" /> Parcelar?</Label></div><Switch checked={isRecurring} onCheckedChange={setIsRecurring} /></div>
                        {isRecurring && (
                         <div className="space-y-2 animate-fade-in pt-2 border-t border-border/50"><Label>Parcelas</Label><div className="flex items-center gap-4"><Input type="number" min="2" max="360" value={installments} onChange={e => setInstallments(Number(e.target.value))} /><div className="text-xs text-muted-foreground whitespace-nowrap"><CalendarClock className="h-3 w-3 inline mr-1" />Fim: <strong className="text-primary">{getEndDate()}</strong></div></div></div>
                        )}
@@ -443,11 +434,7 @@ export default function TransactionsPage() {
                       
                       <TableCell className="text-center">
                          {group.main.type === 'expense' && (
-                             <Button 
-                               variant="ghost" size="sm" 
-                               className={`h-6 px-2 gap-1 ${group.main.is_paid ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-muted-foreground hover:bg-muted"}`}
-                               onClick={(e) => handleTogglePaid(e, group.main.id, !!group.main.is_paid)}
-                             >
+                             <Button variant="ghost" size="sm" className={`h-6 px-2 gap-1 ${group.main.is_paid ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-muted-foreground hover:bg-muted"}`} onClick={(e) => handleTogglePaid(e, group.main.id, !!group.main.is_paid)}>
                                 {group.main.is_paid ? <CheckCircle className="h-4 w-4" /> : <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />}
                              </Button>
                          )}
