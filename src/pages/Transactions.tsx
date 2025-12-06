@@ -18,6 +18,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, parseISO, isToday, isYesterday, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
+// Novos componentes importados para o calendário brasileiro
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -56,11 +57,11 @@ export default function TransactionsPage() {
   const [cards, setCards] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
-  // CORREÇÃO 1: Usar data local formatada para evitar erro de UTC/Fuso Horário
+  // CORREÇÃO CRÍTICA: Inicializa com a data local (Brasil) formatada, evitando erro de fuso horário (UTC)
   const [formData, setFormData] = useState({
     description: "", 
     amount: "", 
-    date: format(new Date(), 'yyyy-MM-dd'), // Garante a data correta no Brasil
+    date: format(new Date(), 'yyyy-MM-dd'), 
     type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
     observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
   });
@@ -69,6 +70,7 @@ export default function TransactionsPage() {
 
   useEffect(() => { fetchAllData(); }, [month]);
 
+  // Ao abrir o modal de edição ou nova transação
   useEffect(() => {
     if (editingId) {
       const tx = transactions.find(t => t.id === editingId);
@@ -90,7 +92,7 @@ export default function TransactionsPage() {
         });
       }
     } else {
-      // Resetar form com data local correta
+      // CORREÇÃO: Reseta o formulário sempre com a data de HOJE correta
       setFormData({
         description: "", amount: "", date: format(new Date(), 'yyyy-MM-dd'),
         type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
@@ -104,7 +106,7 @@ export default function TransactionsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Garante que o filtro pegue o mês inteiro corretamente
+    // Garante que o filtro pegue do dia 01 até o último dia do mês corretamente
     const start = format(startOfMonth(month), 'yyyy-MM-dd');
     const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
@@ -114,7 +116,7 @@ export default function TransactionsPage() {
         .eq('user_id', user.id)
         .gte('date', start)
         .lte('date', end)
-        .order('date', { ascending: false }),
+        .order('date', { ascending: false }), // Ordena do mais recente para o mais antigo
       supabase.from('accounts').select('*'),
       supabase.from('credit_cards').select('*'),
       supabase.from('categories').select('*').order('name')
@@ -163,9 +165,10 @@ export default function TransactionsPage() {
         if (formData.is_installment && formData.type === 'expense') {
           const batch = [];
           const groupId = crypto.randomUUID();
-          // Ajuste para garantir que a data do parcelamento também respeite o local
-          const initialDateParts = formData.date.split('-');
-          const initialDate = new Date(Number(initialDateParts[0]), Number(initialDateParts[1]) - 1, Number(initialDateParts[2]));
+          
+          // Lógica robusta de datas para parcelas
+          const [year, month, day] = formData.date.split('-').map(Number);
+          const initialDate = new Date(year, month - 1, day);
           
           for (let i = 0; i < formData.installments_count; i++) {
             const nextDate = new Date(initialDate);
@@ -173,7 +176,7 @@ export default function TransactionsPage() {
             
             batch.push({
               ...basePayload,
-              date: format(nextDate, 'yyyy-MM-dd'),
+              date: format(nextDate, 'yyyy-MM-dd'), // Garante formato correto na parcela
               installment_id: groupId,
               installment_number: i + 1,
               installment_total: formData.installments_count,
@@ -192,7 +195,7 @@ export default function TransactionsPage() {
 
       toast({ title: editingId ? "Atualizado com sucesso!" : "Transação criada!" });
       setIsSheetOpen(false);
-      fetchAllData();
+      fetchAllData(); // Atualiza a lista imediatamente
 
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
@@ -212,6 +215,7 @@ export default function TransactionsPage() {
 
   const openNew = () => {
     setEditingId(null);
+    // Reinicia o form com a data de hoje correta
     setFormData({
       description: "", amount: "", date: format(new Date(), 'yyyy-MM-dd'),
       type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
@@ -223,6 +227,7 @@ export default function TransactionsPage() {
   const groupedTransactions = transactions
     .filter(t => {
       const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
+      // Ajuste para garantir que typeFilter funcione se você implementar filtros visuais depois
       const matchesType = typeFilter === "all" || t.type === typeFilter;
       return matchesSearch && matchesType;
     })
@@ -234,7 +239,6 @@ export default function TransactionsPage() {
     }, {});
 
   const formatDateHeader = (dateStr: string) => {
-    // Corrige problema de visualização de data ao renderizar "Ontem/Hoje"
     const [year, month, day] = dateStr.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     
@@ -296,7 +300,7 @@ export default function TransactionsPage() {
                       </div>
                     </div>
                     
-                    {/* CORREÇÃO 2: Componente de Calendário Brasileiro (pt-BR) */}
+                    {/* NOVO SELETOR DE DATA: CALENDÁRIO PT-BR */}
                     <div className="space-y-2 flex flex-col">
                       <Label>Data</Label>
                       <Popover>
@@ -308,7 +312,6 @@ export default function TransactionsPage() {
                               !formData.date && "text-muted-foreground"
                             )}
                           >
-                            {/* Exibe a data formatada corretamente */}
                             {formData.date ? (
                               format(parseISO(formData.date), "PPP", { locale: ptBR })
                             ) : (
@@ -320,7 +323,6 @@ export default function TransactionsPage() {
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
-                            // Converte string YYYY-MM-DD para Date object
                             selected={formData.date ? parseISO(formData.date) : undefined}
                             onSelect={(date) => date && setFormData({ ...formData, date: format(date, "yyyy-MM-dd") })}
                             initialFocus
