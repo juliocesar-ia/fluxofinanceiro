@@ -19,7 +19,6 @@ import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, parseISO, isToday, isYesterday, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-// Tipagem
 type Transaction = {
   id: string;
   description: string;
@@ -44,42 +43,26 @@ export default function TransactionsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Filtros
   const [month, setMonth] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all"); 
-  
-  // Controle do Formulário
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Dados Auxiliares
   const [accounts, setAccounts] = useState<any[]>([]);
   const [cards, setCards] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
-  // Estado do Formulário
   const [formData, setFormData] = useState({
-    description: "",
-    amount: "",
-    date: new Date().toISOString().split('T')[0],
-    type: "expense",
-    category_id: "",
-    account_id: "",
-    card_id: "",
-    payment_method: "debit",
-    observation: "",
-    is_paid: true,
-    is_fixed: false,
-    is_installment: false,
-    installments_count: 2
+    description: "", amount: "", date: new Date().toISOString().split('T')[0],
+    type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
+    observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
   });
 
   const { toast } = useToast();
 
   useEffect(() => { fetchAllData(); }, [month]);
 
-  // EFEITO PARA CARREGAR DADOS NA EDIÇÃO (CORREÇÃO DO BUG)
   useEffect(() => {
     if (editingId) {
       const tx = transactions.find(t => t.id === editingId);
@@ -96,26 +79,15 @@ export default function TransactionsPage() {
           observation: tx.observation || "",
           is_paid: tx.is_paid,
           is_fixed: tx.is_fixed,
-          is_installment: false, // Não editamos parcelamento em lote por aqui
+          is_installment: false,
           installments_count: 2
         });
       }
     } else {
-      // Reset para nova transação
       setFormData({
-        description: "",
-        amount: "",
-        date: new Date().toISOString().split('T')[0],
-        type: "expense",
-        category_id: "",
-        account_id: "",
-        card_id: "",
-        payment_method: "debit",
-        observation: "",
-        is_paid: true,
-        is_fixed: false,
-        is_installment: false,
-        installments_count: 2
+        description: "", amount: "", date: new Date().toISOString().split('T')[0],
+        type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
+        observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
       });
     }
   }, [editingId, isSheetOpen]);
@@ -125,8 +97,9 @@ export default function TransactionsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const start = startOfMonth(month).toISOString();
-    const end = endOfMonth(month).toISOString();
+    // CORREÇÃO AQUI: Usando strings de data simples para evitar erros de Fuso Horário
+    const start = format(startOfMonth(month), 'yyyy-MM-dd');
+    const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
     const [transRes, accRes, cardRes, catRes] = await Promise.all([
       supabase.from('transactions')
@@ -169,18 +142,17 @@ export default function TransactionsPage() {
       payment_method: formData.payment_method,
       is_paid: formData.is_paid,
       is_fixed: formData.is_fixed,
-      observation: formData.observation
+      observation: formData.observation,
+      category: "Personalizada" 
     };
 
     let error = null;
 
     try {
       if (editingId) {
-        // ATUALIZAÇÃO
         const { error: err } = await supabase.from('transactions').update(basePayload).eq('id', editingId);
         error = err;
       } else {
-        // CRIAÇÃO
         if (formData.is_installment && formData.type === 'expense') {
           const batch = [];
           const groupId = crypto.randomUUID();
@@ -229,7 +201,36 @@ export default function TransactionsPage() {
     fetchAllData();
   };
 
-  // --- AGRUPAMENTO VISUAL ---
+  const openNew = () => {
+    setEditingId(null);
+    setFormData({
+      description: "", amount: "", date: new Date().toISOString().split('T')[0],
+      type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
+      observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
+    });
+    setIsSheetOpen(true);
+  };
+
+  const openEdit = (t: Transaction) => {
+    setEditingId(t.id);
+    setFormData({
+      description: t.description,
+      amount: String(t.amount),
+      date: t.date,
+      type: t.type,
+      category_id: t.category_id || "",
+      account_id: t.account_id || "",
+      card_id: t.card_id || "",
+      payment_method: t.payment_method || "debit",
+      observation: t.observation || "",
+      is_paid: t.is_paid,
+      is_fixed: t.is_fixed,
+      is_installment: false,
+      installments_count: 2
+    });
+    setIsSheetOpen(true);
+  };
+
   const groupedTransactions = transactions
     .filter(t => {
       const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -254,7 +255,6 @@ export default function TransactionsPage() {
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-24">
         
-        {/* HEADER E FILTROS */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-4 border-b">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Extrato</h1>
@@ -277,7 +277,7 @@ export default function TransactionsPage() {
 
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
               <SheetTrigger asChild>
-                <Button className="gap-2 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setEditingId(null)}>
+                <Button className="gap-2 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90" onClick={openNew}>
                   <Plus className="h-4 w-4" /> Nova
                 </Button>
               </SheetTrigger>
@@ -400,7 +400,6 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        {/* --- LISTAGEM DE EXTRATO --- */}
         <div className="space-y-6">
             {Object.keys(groupedTransactions).sort((a,b) => new Date(b).getTime() - new Date(a).getTime()).map(date => (
                 <div key={date} className="space-y-2 animate-in fade-in slide-in-from-bottom-2">

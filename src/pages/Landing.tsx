@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge"; // <--- ESTA LINHA ESTAVA FALTANDO!
+import { Badge } from "@/components/ui/badge"; // <--- Importação que faltava
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Accordion,
@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/accordion";
 import { 
   ArrowRight, CheckCircle2, TrendingUp, Shield, Smartphone, 
-  Zap, PieChart, Wallet, Trophy, Target, Star, Play
+  PieChart, Wallet, Trophy, Target, Star
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -95,7 +95,6 @@ export default function Landing() {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-primary/20 rounded-full blur-[120px] -z-10 opacity-50"></div>
         
         <div className="container mx-auto px-6 text-center">
-          {/* AQUI ESTAVA O PROBLEMA: Badge sendo usado sem importação */}
           <Badge variant="outline" className="mb-6 px-4 py-1.5 text-sm border-primary/30 bg-primary/5 text-primary animate-in fade-in slide-in-from-bottom-4 duration-700">
              <Star className="h-3.5 w-3.5 mr-2 fill-primary" /> A escolha inteligente para seu bolso
           </Badge>
@@ -116,9 +115,7 @@ export default function Landing() {
                 Começar Teste Grátis <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </Link>
-            <Button variant="outline" size="lg" className="w-full sm:w-auto h-14 px-8 text-lg gap-2 hover:bg-secondary/50">
-               <Play className="h-5 w-5" /> Ver Demo
-            </Button>
+            {/* BOTÃO "VER DEMO" REMOVIDO DAQUI */}
           </div>
 
           <p className="mt-6 text-sm text-muted-foreground animate-in fade-in delay-500">
@@ -127,6 +124,7 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* MOCKUP E RESTO DA PÁGINA (MANTIDO) */}
       <section className="container mx-auto px-4 -mt-10 mb-24 relative z-10">
          <div className="rounded-xl border bg-card/50 backdrop-blur shadow-2xl p-2 md:p-4 animate-in fade-in zoom-in duration-1000 delay-300">
             <div className="rounded-lg overflow-hidden bg-background aspect-video md:aspect-[21/9] border flex items-center justify-center relative group">
@@ -139,6 +137,7 @@ export default function Landing() {
          </div>
       </section>
 
+      {/* FEATURES GRID */}
       <section className="py-24 bg-secondary/30">
         <div className="container mx-auto px-6">
           <div className="text-center mb-16">
@@ -166,6 +165,7 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* PRICING */}
       <section className="py-24 relative overflow-hidden">
          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[100px] -z-10"></div>
          
@@ -174,10 +174,10 @@ export default function Landing() {
                <div>
                   <h2 className="text-4xl font-bold mb-6">Investimento simbólico,<br />retorno garantido.</h2>
                   <p className="text-lg text-muted-foreground mb-8">
-                     Por menos que um lanche, você assume o controle da sua vida financeira e para de perder dinheiro com juros e gastos invisíveis.
+                     O FinancePro custa menos que um café por mês, mas pode te economizar milhares de reais em juros e gastos desnecessários.
                   </p>
                   <ul className="space-y-4">
-                     {["Acesso ilimitado", "Backup em nuvem", "Suporte prioritário", "Novas features mensais"].map((item, i) => (
+                     {["Acesso ilimitado a tudo", "Suporte prioritário", "Atualizações semanais", "Backup automático"].map((item, i) => (
                         <li key={i} className="flex items-center gap-3">
                            <CheckCircle2 className="h-5 w-5 text-green-500" />
                            <span className="font-medium">{item}</span>
