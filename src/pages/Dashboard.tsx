@@ -14,6 +14,8 @@ import { differenceInCalendarDays, startOfMonth, endOfMonth, startOfYear, endOfY
 import { ptBR } from "date-fns/locale";
 import Confetti from 'react-confetti';
 import { PrivacyDisplay } from "@/components/PrivacyDisplay";
+import { checkAndGenerateRecurring } from "@/utils/automation";
+import { useToast } from "@/hooks/use-toast";
 
 // Helper para formatar moeda
 const formatCurrency = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -28,6 +30,7 @@ export default function Dashboard() {
   const currentMonth = (new Date().getMonth() + 1).toString();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
+  const { toast } = useToast();
 
   // Gamificação
   const [userName, setUserName] = useState("Investidor");
@@ -47,6 +50,12 @@ export default function Dashboard() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // 1. ROBÔ DE AUTOMAÇÃO (NOVO)
+    await checkAndGenerateRecurring(user.id).then((count) => {
+       if (count && count > 0) {
+         toast({ title: "Gestão Automática", description: `${count} contas fixas foram lançadas na sua agenda.` });
+       }
+    });
     // 0. Definir datas
     let startDate, endDate;
     const yearInt = parseInt(selectedYear);

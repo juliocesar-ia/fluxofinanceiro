@@ -48,28 +48,22 @@ type GroupedTransaction = {
 };
 
 export default function TransactionsPage() {
-  // Estados de Dados
   const [rawTransactions, setRawTransactions] = useState<Transaction[]>([]);
   const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransaction[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estados de Filtro e Busca
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   
-  // Estados de Ação
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Estados do Modal
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>(null);
   
-  // Estados do Formulário
   const [isRecurring, setIsRecurring] = useState(false);
   const [isFixed, setIsFixed] = useState(false);
-  const [recurrenceType, setRecurrenceType] = useState<'installments' | 'fixed'>('installments');
   const [installments, setInstallments] = useState(2);
 
   const { toast } = useToast();
@@ -80,7 +74,6 @@ export default function TransactionsPage() {
     fetchInitialData();
   }, []);
 
-  // Sempre que os dados brutos mudarem, reagrupa
   useEffect(() => {
     groupTransactions();
   }, [rawTransactions, searchTerm, typeFilter]);
@@ -106,16 +99,14 @@ export default function TransactionsPage() {
     setLoading(false);
   };
 
-  // --- LÓGICA DE AGRUPAMENTO (A "Mágica" da Seta) ---
+  // --- LÓGICA DE AGRUPAMENTO ---
   const groupTransactions = () => {
-    // 1. Filtrar
     let filtered = rawTransactions.filter(t => {
       const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesType = typeFilter === "all" || t.type === typeFilter;
       return matchesSearch && matchesType;
     });
 
-    // 2. Agrupar
     const groups: Record<string, Transaction[]> = {};
     const singles: Transaction[] = [];
 
@@ -128,17 +119,11 @@ export default function TransactionsPage() {
       }
     });
 
-    // 3. Processar Grupos
     const processedGroups: GroupedTransaction[] = [];
     
     Object.values(groups).forEach(groupList => {
-      // Ordena parcelas pela data
       groupList.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-      // Define qual mostrar: A primeira que NÃO está paga (ou a última se tudo estiver pago)
       let mainDisplay = groupList.find(t => !t.is_paid) || groupList[groupList.length - 1];
-      
-      // Mantém o estado de expandido se já existia antes
       const wasExpanded = groupedTransactions.find(g => g.main.installment_group_id === groupList[0].installment_group_id)?.isExpanded || false;
 
       processedGroups.push({
@@ -148,15 +133,12 @@ export default function TransactionsPage() {
       });
     });
 
-    // 4. Juntar singles e groups
     const finalData = [
       ...processedGroups,
       ...singles.map(t => ({ main: t, subTransactions: [], isExpanded: false }))
     ];
 
-    // 5. Ordenar final por data
     finalData.sort((a, b) => new Date(b.main.date).getTime() - new Date(a.main.date).getTime());
-
     setGroupedTransactions(finalData);
   };
 
@@ -174,9 +156,7 @@ export default function TransactionsPage() {
   const handleTogglePaid = async (e: React.MouseEvent, id: string, currentStatus: boolean) => {
     e.stopPropagation();
     const { error } = await supabase.from('transactions').update({ is_paid: !currentStatus }).eq('id', id);
-    
     if (!error) {
-      // Atualiza localmente para refletir na hora
       setRawTransactions(prev => prev.map(t => t.id === id ? { ...t, is_paid: !currentStatus } : t));
       toast({ title: !currentStatus ? "Pago!" : "Pendente" });
     }
@@ -199,17 +179,19 @@ export default function TransactionsPage() {
       category: "Personalizada",
       date: formData.get('date') as string,
       is_fixed: isFixed,
-      // Se estiver editando, mantém o status. Se for novo, nasce como Pago (true).
-      is_paid: editingTransaction ? editingTransaction.is_paid : true 
+      // Se for novo, nasce Pendente (false). Se for edição, mantém o status atual.
+      is_paid: editingTransaction ? editingTransaction.is_paid : false 
     };
 
     let error = null;
 
     if (editingTransaction) {
+      // ATUALIZAÇÃO
       const { error: updateError } = await supabase.from('transactions').update(baseTransaction).eq('id', editingTransaction.id);
       error = updateError;
     } else {
-      if (isRecurring && recurrenceType === 'installments') {
+      // CRIAÇÃO
+      if (isRecurring) {
         const groupId = crypto.randomUUID();
         const transactionsToInsert = [];
         const initialDate = new Date(baseTransaction.date + 'T12:00:00');
@@ -221,8 +203,7 @@ export default function TransactionsPage() {
             description: `${baseTransaction.description} (${i + 1}/${installments})`,
             date: nextDate.toISOString().split('T')[0],
             installment_group_id: groupId,
-            // REGRA DE OURO: 1ª Parcela = Paga (true), Resto = Pendente (false)
-            is_paid: i === 0 ? true : false 
+            is_paid: false
           });
         }
         const { error: insertError } = await supabase.from('transactions').insert(transactionsToInsert);
@@ -238,7 +219,7 @@ export default function TransactionsPage() {
     } else {
       toast({ title: "Salvo com sucesso!" });
       setIsDialogOpen(false);
-      fetchInitialData(); // Recarrega tudo do banco
+      fetchInitialData();
     }
   };
 
@@ -248,7 +229,6 @@ export default function TransactionsPage() {
     if (!error) { toast({ title: "Removida" }); fetchInitialData(); }
   };
 
-  // --- SELEÇÃO EM MASSA ---
   const handleSelectAll = (checked: boolean) => {
     if (checked) setSelectedIds(rawTransactions.map(t => t.id));
     else setSelectedIds([]);
@@ -267,13 +247,14 @@ export default function TransactionsPage() {
     else { toast({ title: "Excluídos!" }); setSelectedIds([]); fetchInitialData(); }
   };
 
-  // Helpers
+  // --- HELPERS ---
   const handleEdit = (t: any) => {
     setEditingTransaction(t);
     setIsRecurring(false);
-    setIsFixed(t.is_fixed || false);
+    setIsFixed(t.is_fixed || false); // Garante que o switch venha correto
     setIsDialogOpen(true);
   };
+
   const handleNew = () => {
     setEditingTransaction(null);
     setIsRecurring(false);
@@ -281,15 +262,71 @@ export default function TransactionsPage() {
     setInstallments(2);
     setIsDialogOpen(true);
   };
+
   const fixDate = (d: string) => new Date(d + 'T12:00:00');
   const getEndDate = () => format(addMonths(new Date(), installments - 1), "MMMM 'de' yyyy", { locale: ptBR });
   
   const triggerFileUpload = () => fileInputRef.current?.click();
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    // (Lógica de upload mantida igual, omitida aqui para focar no agrupamento)
     const file = event.target.files?.[0];
     if(!file) return;
-    toast({title: "Arquivo selecionado", description: "Importação em breve..."});
+    setImporting(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setImporting(false); return; }
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const text = e.target?.result as string;
+      const importedTransactions: any[] = [];
+      try {
+        if (file.name.toLowerCase().endsWith('.csv')) {
+           Papa.parse(text, {
+              header: true, skipEmptyLines: true,
+              complete: (results) => {
+                 results.data.forEach((row: any) => {
+                    const dateVal = row['Data'] || row['date'];
+                    const descVal = row['Descrição'] || row['Description'];
+                    const amountVal = row['Valor'] || row['Amount'];
+                    if (dateVal && amountVal) {
+                       const cleanAmount = parseFloat(String(amountVal).replace('R$', '').replace('.', '').replace(',', '.').trim());
+                       let cleanDate = dateVal;
+                       if (dateVal.includes('/')) {
+                          const parts = dateVal.split('/');
+                          if(parts.length === 3) cleanDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
+                       }
+                       if (!isNaN(cleanAmount)) {
+                          importedTransactions.push({
+                             user_id: user.id,
+                             description: descVal || "CSV Importado",
+                             amount: Math.abs(cleanAmount),
+                             type: cleanAmount < 0 ? 'expense' : 'income',
+                             date: cleanDate,
+                             category: "Importado",
+                             account_id: accounts.length > 0 ? accounts[0].id : null,
+                             is_paid: false
+                          });
+                       }
+                    }
+                 });
+              }
+           });
+        }
+        if (importedTransactions.length > 0) {
+           const { error } = await supabase.from('transactions').insert(importedTransactions);
+           if (error) throw error;
+           toast({ title: "Importação Concluída!", description: `${importedTransactions.length} transações.` });
+           fetchInitialData();
+        } else {
+           toast({ title: "Nenhuma transação encontrada", variant: "destructive" });
+        }
+      } catch (error: any) {
+        toast({ title: "Erro na Importação", description: error.message, variant: "destructive" });
+      } finally {
+        setImporting(false);
+        if(fileInputRef.current) fileInputRef.current.value = "";
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -297,7 +334,7 @@ export default function TransactionsPage() {
       <div className="space-y-6 animate-fade-in pb-20">
         
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div><h1 className="text-3xl font-bold tracking-tight">Transações</h1><p className="text-muted-foreground">Controle detalhado de fluxo.</p></div>
+          <div><h1 className="text-3xl font-bold tracking-tight">Transações</h1><p className="text-muted-foreground">Gerencie entradas e saídas.</p></div>
           
           <div className="flex gap-2 items-center">
             {selectedIds.length > 0 && (
@@ -309,8 +346,13 @@ export default function TransactionsPage() {
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild><Button className="bg-primary text-white hover:bg-primary/90" onClick={handleNew}><Plus className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Nova</span></Button></DialogTrigger>
               <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>{editingTransaction ? "Editar" : "Adicionar"} Transação</DialogTitle></DialogHeader>
-                <form onSubmit={handleSave} className="space-y-4 py-4">
+                <DialogHeader>
+                    <DialogTitle>{editingTransaction ? "Editar Transação" : "Nova Transação"}</DialogTitle>
+                    {!editingTransaction && <DialogDescription>Registe uma compra única ou parcelada.</DialogDescription>}
+                </DialogHeader>
+                
+                {/* AQUI ESTÁ A CORREÇÃO: key={editingTransaction?.id} FORÇA O FORM A RESETAR */}
+                <form key={editingTransaction ? editingTransaction.id : 'new'} onSubmit={handleSave} className="space-y-4 py-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2"><Label>Tipo</Label><Select name="type" defaultValue={editingTransaction?.type || "expense"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expense">Despesa</SelectItem><SelectItem value="income">Receita</SelectItem></SelectContent></Select></div>
                     <div className="space-y-2"><Label>Valor</Label><Input type="number" name="amount" step="0.01" defaultValue={editingTransaction?.amount} required /></div>
@@ -322,7 +364,7 @@ export default function TransactionsPage() {
                   </div>
                   <div className="space-y-2"><Label>Categoria</Label><Select name="category_id" defaultValue={editingTransaction?.category_id}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{categories.map(cat => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}</SelectContent></Select></div>
                   
-                  {/* REMOVIDO O BOTÃO "PAGO?" DAQUI */}
+                  {/* OPÇÕES (Sem Pago?) */}
                   <div className="grid grid-cols-1 gap-4">
                      <div className="bg-muted/30 p-3 rounded-lg border flex items-center justify-between">
                         <div className="space-y-0.5"><Label className="flex items-center gap-2"><Anchor className="h-3 w-3" /> É Fixa?</Label></div>
@@ -375,13 +417,11 @@ export default function TransactionsPage() {
               {loading ? ( <TableRow><TableCell colSpan={8} className="h-24 text-center">Carregando...</TableCell></TableRow> ) : groupedTransactions.length === 0 ? ( <TableRow><TableCell colSpan={8} className="h-24 text-center">Nenhuma transação.</TableCell></TableRow> ) : (
                 groupedTransactions.map((group, index) => (
                   <>
-                    {/* LINHA PRINCIPAL */}
                     <TableRow key={group.main.id} className={`group hover:bg-muted/30 ${selectedIds.includes(group.main.id) ? 'bg-primary/5' : ''}`}>
                       <TableCell className="text-center"><Checkbox checked={selectedIds.includes(group.main.id)} onCheckedChange={(checked) => handleSelectOne(group.main.id, checked as boolean)} /></TableCell>
                       <TableCell className="font-medium">{format(fixDate(group.main.date), 'dd/MM/yy', { locale: ptBR })}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          {/* SETA PARA EXPANDIR */}
                           {group.subTransactions.length > 0 && (
                              <Button variant="ghost" size="icon" className="h-5 w-5 p-0 text-muted-foreground" onClick={() => toggleExpand(group.main.installment_group_id!)}>
                                 {group.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
@@ -401,12 +441,10 @@ export default function TransactionsPage() {
                       <TableCell className="hidden md:table-cell text-muted-foreground text-sm">{group.main.accounts?.name || '-'}</TableCell>
                       <TableCell className={`text-right font-bold ${group.main.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{Number(group.main.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
                       
-                      {/* STATUS (APENAS PARA DESPESAS) */}
                       <TableCell className="text-center">
                          {group.main.type === 'expense' && (
                              <Button 
-                               variant="ghost" 
-                               size="sm" 
+                               variant="ghost" size="sm" 
                                className={`h-6 px-2 gap-1 ${group.main.is_paid ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-muted-foreground hover:bg-muted"}`}
                                onClick={(e) => handleTogglePaid(e, group.main.id, !!group.main.is_paid)}
                              >
@@ -423,7 +461,6 @@ export default function TransactionsPage() {
                       </TableCell>
                     </TableRow>
 
-                    {/* LINHAS EXPANDIDAS */}
                     {group.isExpanded && group.subTransactions.map((subT) => {
                         if(subT.id === group.main.id) return null; 
                         return (
