@@ -3,14 +3,15 @@ import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
-  CheckCircle, Lock, Sparkles, LogOut, Loader2, TrendingUp, 
-  Calendar, PieChart, Target, Wallet, TrendingDown, BarChart3, 
+  Lock, LogOut, Loader2, TrendingUp, 
+  Calendar, Target, TrendingDown, BarChart3, 
   Smartphone, Shield, ArrowLeft 
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-const STRIPE_PRICE_ID = "price_1Sa6PuCFnHZiIXy4ymDpUuLF"; // Substitua se tiver
+// Substitua pelo seu ID de preço real do Stripe (ex: price_1Sa...)
+const STRIPE_PRICE_ID = "price_1Sa6PuCFnHZiIXy4ymDpUuLF"; 
 
 export default function SubscriptionPage() {
   const [loading, setLoading] = useState(false);
@@ -25,23 +26,35 @@ export default function SubscriptionPage() {
   const handleSubscribe = async () => {
     setLoading(true);
     try {
+      // 1. Verificar se o usuário está logado
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { navigate("/auth"); return; }
+      if (!session) { 
+        navigate("/auth"); 
+        return; 
+      }
 
-      // Tenta Checkout via Function, se falhar avisa
-      try {
-        const { data, error } = await supabase.functions.invoke('subscribe', {
-            body: { priceId: STRIPE_PRICE_ID },
-        });
-        if (error) throw error;
-        if (data?.url) window.location.href = data.url;
-      } catch (e) {
-         console.error(e);
-         toast({ title: "Erro de Pagamento", description: "Sistema de pagamento em manutenção (Modo Demo).", variant: "destructive" });
+      // 2. Chamar a Edge Function 'subscribe' para criar a sessão do Stripe
+      const { data, error } = await supabase.functions.invoke('subscribe', {
+          body: { priceId: STRIPE_PRICE_ID },
+      });
+
+      if (error) throw error;
+      
+      // 3. Redirecionar para o Checkout do Stripe se a URL for retornada
+      if (data?.url) {
+          window.location.href = data.url;
+          return;
+      } else {
+        throw new Error("URL de checkout não retornada.");
       }
       
     } catch (error: any) {
-      toast({ title: "Erro", description: "Erro de sessão.", variant: "destructive" });
+         console.error("Erro ao iniciar pagamento:", error);
+         toast({ 
+           title: "Erro ao iniciar assinatura", 
+           description: "Não foi possível conectar ao sistema de pagamento. Tente novamente.", 
+           variant: "destructive" 
+         });
     } finally {
       setLoading(false);
     }
@@ -94,7 +107,7 @@ export default function SubscriptionPage() {
                 </p>
             </div>
 
-            {/* Lista manual para evitar erros de renderização */}
+            {/* Lista de Benefícios */}
             <div className="grid gap-3 text-sm">
                 <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-green-600"><TrendingDown className="h-4 w-4" /></div>
