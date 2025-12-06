@@ -1,484 +1,492 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import DashboardLayout from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
-} from "@/components/ui/select";
-import { 
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription
-} from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Card } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  Plus, Search, Trash2, Pencil, FileUp, Loader2, CalendarClock, Repeat, Anchor, 
-  ChevronRight, ChevronDown, CheckCircle 
+  Plus, Search, Trash2, Pencil, Calendar as CalendarIcon, 
+  ArrowUpCircle, ArrowDownCircle, CreditCard, Wallet, CheckCircle2, Clock, 
+  Tag, Filter
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { format, addMonths } from "date-fns";
+import { format, startOfMonth, endOfMonth, parseISO, isToday, isYesterday, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import Papa from "papaparse";
 
-// Tipos
+// Tipagem
 type Transaction = {
   id: string;
   description: string;
   amount: number;
   type: 'income' | 'expense';
   date: string;
-  account_id: string;
-  category_id: string;
+  account_id?: string;
+  card_id?: string;
+  category_id?: string;
+  payment_method: string;
+  is_paid: boolean;
+  is_fixed: boolean;
+  installment_number?: number;
+  installment_total?: number;
+  observation?: string;
   categories?: { name: string, color: string };
   accounts?: { name: string };
-  is_fixed?: boolean;
-  is_paid?: boolean;
-  installment_group_id?: string;
-};
-
-type GroupedTransaction = {
-  main: Transaction;
-  subTransactions: Transaction[];
-  isExpanded: boolean;
+  credit_cards?: { name: string };
 };
 
 export default function TransactionsPage() {
-  const [rawTransactions, setRawTransactions] = useState<Transaction[]>([]);
-  const [groupedTransactions, setGroupedTransactions] = useState<GroupedTransaction[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Filtros
+  const [month, setMonth] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [importing, setImporting] = useState(false);
+  const [typeFilter, setTypeFilter] = useState("all"); 
   
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingTransaction, setEditingTransaction] = useState<any>(null);
+  // Controle do Formulário
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [isFixed, setIsFixed] = useState(false);
-  const [recurrenceType, setRecurrenceType] = useState<'installments' | 'fixed'>('installments');
-  const [installments, setInstallments] = useState(2);
-
-  const { toast } = useToast();
+  // Dados Auxiliares
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [cards, setCards] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
-  useEffect(() => {
-    fetchInitialData();
-  }, []);
+  // Estado do Formulário
+  const [formData, setFormData] = useState({
+    description: "",
+    amount: "",
+    date: new Date().toISOString().split('T')[0],
+    type: "expense",
+    category_id: "",
+    account_id: "",
+    card_id: "",
+    payment_method: "debit",
+    observation: "",
+    is_paid: true,
+    is_fixed: false,
+    is_installment: false,
+    installments_count: 2
+  });
 
-  useEffect(() => {
-    groupTransactions();
-  }, [rawTransactions, searchTerm, typeFilter]);
+  const { toast } = useToast();
 
-  const fetchInitialData = async () => {
+  useEffect(() => { fetchAllData(); }, [month]);
+
+  // EFEITO PARA CARREGAR DADOS NA EDIÇÃO (CORREÇÃO DO BUG)
+  useEffect(() => {
+    if (editingId) {
+      const tx = transactions.find(t => t.id === editingId);
+      if (tx) {
+        setFormData({
+          description: tx.description,
+          amount: String(tx.amount),
+          date: tx.date,
+          type: tx.type,
+          category_id: tx.category_id || "",
+          account_id: tx.account_id || "",
+          card_id: tx.card_id || "",
+          payment_method: tx.payment_method || "debit",
+          observation: tx.observation || "",
+          is_paid: tx.is_paid,
+          is_fixed: tx.is_fixed,
+          is_installment: false, // Não editamos parcelamento em lote por aqui
+          installments_count: 2
+        });
+      }
+    } else {
+      // Reset para nova transação
+      setFormData({
+        description: "",
+        amount: "",
+        date: new Date().toISOString().split('T')[0],
+        type: "expense",
+        category_id: "",
+        account_id: "",
+        card_id: "",
+        payment_method: "debit",
+        observation: "",
+        is_paid: true,
+        is_fixed: false,
+        is_installment: false,
+        installments_count: 2
+      });
+    }
+  }, [editingId, isSheetOpen]);
+
+  const fetchAllData = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: transData } = await supabase
-      .from('transactions')
-      .select(`*, accounts(name), categories(name, color)`)
-      .eq('user_id', user.id)
-      .order('date', { ascending: false });
+    const start = startOfMonth(month).toISOString();
+    const end = endOfMonth(month).toISOString();
 
-    const { data: accData } = await supabase.from('accounts').select('*');
-    const { data: catData } = await supabase.from('categories').select('*');
+    const [transRes, accRes, cardRes, catRes] = await Promise.all([
+      supabase.from('transactions')
+        .select(`*, categories(name, color), accounts(name), credit_cards(name)`)
+        .eq('user_id', user.id)
+        .gte('date', start)
+        .lte('date', end)
+        .order('date', { ascending: false }),
+      supabase.from('accounts').select('*'),
+      supabase.from('credit_cards').select('*'),
+      supabase.from('categories').select('*').order('name')
+    ]);
 
-    if (transData) setRawTransactions(transData);
-    if (accData) setAccounts(accData);
-    if (catData) setCategories(catData);
+    if (transRes.data) setTransactions(transRes.data);
+    if (accRes.data) setAccounts(accRes.data);
+    if (cardRes.data) setCards(cardRes.data);
+    if (catRes.data) setCategories(catRes.data);
     
     setLoading(false);
   };
 
-  const fixDate = (dateString: string) => {
-    if (!dateString) return new Date();
-    return new Date(dateString + 'T12:00:00');
-  };
-
-  const groupTransactions = () => {
-    let filtered = rawTransactions.filter(t => {
-      const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesType = typeFilter === "all" || t.type === typeFilter;
-      return matchesSearch && matchesType;
-    });
-
-    const groups: Record<string, Transaction[]> = {};
-    const singles: Transaction[] = [];
-
-    filtered.forEach(t => {
-      if (t.installment_group_id) {
-        if (!groups[t.installment_group_id]) groups[t.installment_group_id] = [];
-        groups[t.installment_group_id].push(t);
-      } else {
-        singles.push(t);
-      }
-    });
-
-    const processedGroups: GroupedTransaction[] = [];
-    
-    Object.values(groups).forEach(groupList => {
-      groupList.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      let mainDisplay = groupList.find(t => !t.is_paid) || groupList[groupList.length - 1];
-      const wasExpanded = groupedTransactions.find(g => g.main.installment_group_id === groupList[0].installment_group_id)?.isExpanded || false;
-
-      processedGroups.push({
-        main: mainDisplay,
-        subTransactions: groupList,
-        isExpanded: wasExpanded
-      });
-    });
-
-    const finalData = [
-      ...processedGroups,
-      ...singles.map(t => ({ main: t, subTransactions: [], isExpanded: false }))
-    ];
-
-    finalData.sort((a, b) => new Date(b.main.date).getTime() - new Date(a.main.date).getTime());
-    setGroupedTransactions(finalData);
-  };
-
-  const toggleExpand = (groupId: string) => {
-    setGroupedTransactions(prev => prev.map(g => {
-      if (g.main.installment_group_id === groupId && g.subTransactions.length > 0) {
-        return { ...g, isExpanded: !g.isExpanded };
-      }
-      return g;
-    }));
-  };
-
-  const handleTogglePaid = async (e: React.MouseEvent, id: string, currentStatus: boolean) => {
-    e.stopPropagation();
-    const { error } = await supabase.from('transactions').update({ is_paid: !currentStatus }).eq('id', id);
-    if (!error) {
-      setRawTransactions(prev => prev.map(t => t.id === id ? { ...t, is_paid: !currentStatus } : t));
-      toast({ title: !currentStatus ? "Pago!" : "Pendente" });
-    }
-  };
-
-  const handleEdit = (t: any) => {
-    setEditingTransaction(t);
-    setIsRecurring(false);
-    setIsFixed(t.is_fixed || false);
-    setIsDialogOpen(true);
-  };
-
-  const handleNew = () => {
-    setEditingTransaction(null);
-    setIsRecurring(false);
-    setIsFixed(false);
-    setInstallments(2);
-    setIsDialogOpen(true);
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const formData = new FormData(form);
+  const handleSave = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const baseTransaction = {
+    if (!formData.description || !formData.amount) {
+      toast({ title: "Preencha a descrição e o valor", variant: "destructive" });
+      return;
+    }
+
+    const basePayload = {
       user_id: user.id,
-      description: formData.get('description'),
-      amount: Number(formData.get('amount')),
-      type: formData.get('type'),
-      account_id: formData.get('account_id'),
-      category_id: formData.get('category_id'),
-      category: "Personalizada",
-      date: formData.get('date') as string,
-      is_fixed: isFixed,
-      // Se editando, mantém status. Se novo, nasce PENDENTE (false)
-      is_paid: editingTransaction ? editingTransaction.is_paid : false 
+      description: formData.description,
+      amount: Number(formData.amount),
+      type: formData.type,
+      date: formData.date,
+      category_id: formData.category_id || null,
+      account_id: formData.payment_method === 'credit' ? null : (formData.account_id || null),
+      card_id: formData.payment_method === 'credit' ? (formData.card_id || null) : null,
+      payment_method: formData.payment_method,
+      is_paid: formData.is_paid,
+      is_fixed: formData.is_fixed,
+      observation: formData.observation
     };
 
     let error = null;
 
-    if (editingTransaction) {
-      // ATUALIZAÇÃO
-      const { error: updateError } = await supabase.from('transactions').update(baseTransaction).eq('id', editingTransaction.id);
-      error = updateError;
-    } else {
-      // CRIAÇÃO
-      if (isRecurring && recurrenceType === 'installments') {
-        const groupId = crypto.randomUUID();
-        const transactionsToInsert = [];
-        const initialDate = new Date(baseTransaction.date + 'T12:00:00');
-
-        for (let i = 0; i < installments; i++) {
-          const nextDate = addMonths(initialDate, i);
-          transactionsToInsert.push({
-            ...baseTransaction,
-            description: `${baseTransaction.description} (${i + 1}/${installments})`,
-            date: nextDate.toISOString().split('T')[0],
-            installment_group_id: groupId,
-            is_paid: false
-          });
-        }
-        const { error: insertError } = await supabase.from('transactions').insert(transactionsToInsert);
-        error = insertError;
+    try {
+      if (editingId) {
+        // ATUALIZAÇÃO
+        const { error: err } = await supabase.from('transactions').update(basePayload).eq('id', editingId);
+        error = err;
       } else {
-        const { error: insertError } = await supabase.from('transactions').insert(baseTransaction);
-        error = insertError;
+        // CRIAÇÃO
+        if (formData.is_installment && formData.type === 'expense') {
+          const batch = [];
+          const groupId = crypto.randomUUID();
+          const initialDate = new Date(formData.date + 'T12:00:00');
+          
+          for (let i = 0; i < formData.installments_count; i++) {
+            const nextDate = new Date(initialDate);
+            nextDate.setMonth(nextDate.getMonth() + i);
+            
+            batch.push({
+              ...basePayload,
+              date: nextDate.toISOString().split('T')[0],
+              installment_id: groupId,
+              installment_number: i + 1,
+              installment_total: formData.installments_count,
+              is_paid: i === 0 ? basePayload.is_paid : false
+            });
+          }
+          const { error: err } = await supabase.from('transactions').insert(batch);
+          error = err;
+        } else {
+          const { error: err } = await supabase.from('transactions').insert(basePayload);
+          error = err;
+        }
       }
-    }
 
-    if (error) {
-      toast({ title: "Erro ao salvar", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Salvo com sucesso!" });
-      setEditingTransaction(null); // Limpa edição
-      setIsDialogOpen(false);
-      fetchInitialData(); // Recarrega tudo
+      if (error) throw error;
+
+      toast({ title: editingId ? "Atualizado com sucesso!" : "Transação criada!" });
+      setIsSheetOpen(false);
+      fetchAllData();
+
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
     }
   };
 
   const handleDelete = async (id: string) => {
-    if(!confirm("Excluir?")) return;
-    const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (!error) { toast({ title: "Removida" }); fetchInitialData(); }
+    if (!confirm("Tem certeza que deseja excluir?")) return;
+    await supabase.from('transactions').delete().eq('id', id);
+    fetchAllData();
   };
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) setSelectedIds(rawTransactions.map(t => t.id));
-    else setSelectedIds([]);
+  const handleTogglePaid = async (id: string, currentStatus: boolean) => {
+    await supabase.from('transactions').update({ is_paid: !currentStatus }).eq('id', id);
+    fetchAllData();
   };
 
-  const handleSelectOne = (id: string, checked: boolean) => {
-    if (checked) setSelectedIds(prev => [...prev, id]);
-    else setSelectedIds(prev => prev.filter(i => i !== id));
-  };
+  // --- AGRUPAMENTO VISUAL ---
+  const groupedTransactions = transactions
+    .filter(t => {
+      const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesType = typeFilter === "all" || t.type === typeFilter;
+      return matchesSearch && matchesType;
+    })
+    .reduce((groups: any, t) => {
+      const date = t.date;
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(t);
+      return groups;
+    }, {});
 
-  const handleBatchDelete = async () => {
-    if (selectedIds.length === 0) return;
-    if (!confirm(`Excluir ${selectedIds.length} transações?`)) return;
-    const { error } = await supabase.from('transactions').delete().in('id', selectedIds);
-    if (error) toast({ title: "Erro", variant: "destructive" });
-    else { toast({ title: "Excluídos!" }); setSelectedIds([]); fetchInitialData(); }
-  };
-
-  const getEndDate = () => format(addMonths(new Date(), installments - 1), "MMMM 'de' yyyy", { locale: ptBR });
-  
-  const triggerFileUpload = () => fileInputRef.current?.click();
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if(!file) return;
-    setImporting(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setImporting(false); return; }
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const text = e.target?.result as string;
-      const importedTransactions: any[] = [];
-      try {
-        if (file.name.toLowerCase().endsWith('.csv')) {
-           Papa.parse(text, {
-              header: true, skipEmptyLines: true,
-              complete: (results) => {
-                 results.data.forEach((row: any) => {
-                    const dateVal = row['Data'] || row['date'];
-                    const descVal = row['Descrição'] || row['Description'];
-                    const amountVal = row['Valor'] || row['Amount'];
-                    if (dateVal && amountVal) {
-                       const cleanAmount = parseFloat(String(amountVal).replace('R$', '').replace('.', '').replace(',', '.').trim());
-                       let cleanDate = dateVal;
-                       if (dateVal.includes('/')) {
-                          const parts = dateVal.split('/');
-                          if(parts.length === 3) cleanDate = `${parts[2]}-${parts[1]}-${parts[0]}`;
-                       }
-                       if (!isNaN(cleanAmount)) {
-                          importedTransactions.push({
-                             user_id: user.id,
-                             description: descVal || "CSV Importado",
-                             amount: Math.abs(cleanAmount),
-                             type: cleanAmount < 0 ? 'expense' : 'income',
-                             date: cleanDate,
-                             category: "Importado",
-                             account_id: accounts.length > 0 ? accounts[0].id : null,
-                             is_paid: false
-                          });
-                       }
-                    }
-                 });
-              }
-           });
-        }
-        if (importedTransactions.length > 0) {
-           const { error } = await supabase.from('transactions').insert(importedTransactions);
-           if (error) throw error;
-           toast({ title: "Importação Concluída!", description: `${importedTransactions.length} transações.` });
-           fetchInitialData();
-        } else {
-           toast({ title: "Nenhuma transação encontrada", variant: "destructive" });
-        }
-      } catch (error: any) {
-        toast({ title: "Erro na Importação", description: error.message, variant: "destructive" });
-      } finally {
-        setImporting(false);
-        if(fileInputRef.current) fileInputRef.current.value = "";
-      }
-    };
-    reader.readAsText(file);
+  const formatDateHeader = (dateStr: string) => {
+    const date = parseISO(dateStr);
+    if (isToday(date)) return "Hoje";
+    if (isYesterday(date)) return "Ontem";
+    return format(date, "EEEE, d 'de' MMMM", { locale: ptBR });
   };
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 animate-fade-in pb-20">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div><h1 className="text-3xl font-bold tracking-tight">Transações</h1><p className="text-muted-foreground">Gerencie entradas e saídas.</p></div>
-          <div className="flex gap-2 items-center">
-            {selectedIds.length > 0 && <Button variant="destructive" size="sm" onClick={handleBatchDelete}><Trash2 className="mr-2 h-4 w-4" /> Excluir ({selectedIds.length})</Button>}
-            <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".ofx,.csv" className="hidden" />
-            <Button variant="outline" onClick={triggerFileUpload} disabled={importing} className="gap-2"><FileUp className="h-4 w-4" /> <span className="hidden sm:inline">Importar</span></Button>
+      <div className="space-y-6 animate-fade-in pb-24">
+        
+        {/* HEADER E FILTROS */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-4 border-b">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Extrato</h1>
+            <p className="text-muted-foreground text-sm flex items-center gap-2">
+               <CalendarIcon className="h-4 w-4" />
+               {format(month, "MMMM 'de' yyyy", { locale: ptBR })}
+            </p>
+          </div>
 
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild><Button className="bg-primary text-white hover:bg-primary/90" onClick={handleNew}><Plus className="mr-2 h-4 w-4" /> <span className="hidden sm:inline">Nova</span></Button></DialogTrigger>
-              <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>{editingTransaction ? "Editar" : "Adicionar"} Transação</DialogTitle></DialogHeader>
-                
-                {/* --- FORMULÁRIO COM CHAVE PARA FORÇAR RESET --- */}
-                <form key={editingTransaction ? editingTransaction.id : 'new'} onSubmit={handleSave} className="space-y-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2"><Label>Tipo</Label><Select name="type" defaultValue={editingTransaction?.type || "expense"}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="expense">Despesa</SelectItem><SelectItem value="income">Receita</SelectItem></SelectContent></Select></div>
-                    <div className="space-y-2"><Label>Valor</Label><Input type="number" name="amount" step="0.01" defaultValue={editingTransaction?.amount} required /></div>
-                  </div>
-                  <div className="space-y-2"><Label>Descrição</Label><Input name="description" defaultValue={editingTransaction?.description} required /></div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2"><Label>Data</Label><Input type="date" name="date" defaultValue={editingTransaction ? editingTransaction.date : new Date().toISOString().split('T')[0]} required /></div>
-                    <div className="space-y-2"><Label>Conta</Label><Select name="account_id" defaultValue={editingTransaction?.account_id}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{accounts.map(acc => <SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>)}</SelectContent></Select></div>
-                  </div>
-                  <div className="space-y-2"><Label>Categoria</Label><Select name="category_id" defaultValue={editingTransaction?.category_id}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent>{categories.map(cat => (<SelectItem key={cat.id} value={cat.id}><div className="flex items-center gap-2"><div className="h-3 w-3 rounded-full" style={{ backgroundColor: cat.color }} />{cat.name}</div></SelectItem>))}</SelectContent></Select></div>
-                  
-                  <div className="grid grid-cols-1 gap-4">
-                     <div className="bg-muted/30 p-3 rounded-lg border flex items-center justify-between">
-                        <div className="space-y-0.5"><Label className="flex items-center gap-2"><Anchor className="h-3 w-3" /> É Fixa?</Label></div>
-                        <Switch checked={isFixed} onCheckedChange={setIsFixed} />
-                     </div>
-                  </div>
+          <div className="flex gap-2 w-full md:w-auto">
+            <div className="relative flex-1 md:w-64">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Buscar..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            </div>
 
-                  {!editingTransaction && (
-                    <div className="bg-muted/30 p-3 rounded-lg border flex flex-col gap-3">
-                       <div className="flex items-center justify-between"><div className="space-y-0.5"><Label className="flex items-center gap-2"><Repeat className="h-3 w-3" /> Parcelar?</Label></div><Switch checked={isRecurring} onCheckedChange={setIsRecurring} /></div>
-                       {isRecurring && (
-                        <div className="space-y-2 animate-fade-in pt-2 border-t border-border/50"><Label>Parcelas</Label><div className="flex items-center gap-4"><Input type="number" min="2" max="360" value={installments} onChange={e => setInstallments(Number(e.target.value))} /><div className="text-xs text-muted-foreground whitespace-nowrap"><CalendarClock className="h-3 w-3 inline mr-1" />Fim: <strong className="text-primary">{getEndDate()}</strong></div></div></div>
-                       )}
+            <div className="flex items-center border rounded-md bg-background">
+               <Button variant="ghost" size="icon" onClick={() => setMonth(addMonths(month, -1))}>{"<"}</Button>
+               <Button variant="ghost" size="icon" onClick={() => setMonth(addMonths(month, 1))}>{">"}</Button>
+            </div>
+
+            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+              <SheetTrigger asChild>
+                <Button className="gap-2 shadow-lg bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setEditingId(null)}>
+                  <Plus className="h-4 w-4" /> Nova
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+                <SheetHeader className="mb-6">
+                  <SheetTitle>{editingId ? "Editar Transação" : "Nova Transação"}</SheetTitle>
+                  <SheetDescription>Detalhes do lançamento.</SheetDescription>
+                </SheetHeader>
+
+                <div className="space-y-6 pb-10">
+                  <Tabs value={formData.type} onValueChange={(v: any) => setFormData({...formData, type: v})} className="w-full">
+                    <TabsList className="w-full grid grid-cols-2">
+                      <TabsTrigger value="expense" className="data-[state=active]:bg-red-50 data-[state=active]:text-red-600">Despesa</TabsTrigger>
+                      <TabsTrigger value="income" className="data-[state=active]:bg-green-50 data-[state=active]:text-green-600">Receita</TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Valor</Label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2.5 text-muted-foreground font-bold">R$</span>
+                        <Input type="number" className="pl-10 text-lg font-bold" placeholder="0,00" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} />
+                      </div>
                     </div>
+                    <div className="space-y-2">
+                      <Label>Data</Label>
+                      <Input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Descrição</Label>
+                    <Input placeholder="Ex: Supermercado" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label>Categoria</Label>
+                        <Select value={formData.category_id} onValueChange={v => setFormData({...formData, category_id: v})}>
+                            <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                            <SelectContent>
+                                {categories.filter(c => c.type === formData.type).map(c => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                        <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{backgroundColor: c.color}} /> {c.name}</div>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="space-y-2">
+                        <Label>Pagamento</Label>
+                        <Select value={formData.payment_method} onValueChange={v => setFormData({...formData, payment_method: v})}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="debit">Débito / Pix</SelectItem>
+                                <SelectItem value="credit">Cartão de Crédito</SelectItem>
+                                <SelectItem value="cash">Dinheiro</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                  </div>
+
+                  {formData.payment_method === 'credit' ? (
+                     <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                        <Label>Qual Cartão?</Label>
+                        <Select value={formData.card_id} onValueChange={v => setFormData({...formData, card_id: v})}>
+                            <SelectTrigger><SelectValue placeholder="Selecione o cartão" /></SelectTrigger>
+                            <SelectContent>{cards.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                     </div>
+                  ) : (
+                     <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                        <Label>Qual Conta?</Label>
+                        <Select value={formData.account_id} onValueChange={v => setFormData({...formData, account_id: v})}>
+                            <SelectTrigger><SelectValue placeholder="Selecione a conta" /></SelectTrigger>
+                            <SelectContent>{accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                        </Select>
+                     </div>
                   )}
-                  <Button type="submit" className="w-full">{editingTransaction ? "Atualizar" : "Salvar"}</Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+
+                  <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+                     <div className="flex items-center justify-between">
+                        <Label className="cursor-pointer">Já foi pago?</Label>
+                        <Switch checked={formData.is_paid} onCheckedChange={v => setFormData({...formData, is_paid: v})} />
+                     </div>
+                     <div className="flex items-center justify-between">
+                        <Label className="cursor-pointer">É despesa fixa?</Label>
+                        <Switch checked={formData.is_fixed} onCheckedChange={v => setFormData({...formData, is_fixed: v})} />
+                     </div>
+                     
+                     {!editingId && formData.type === 'expense' && (
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label className="cursor-pointer">Parcelar?</Label>
+                                {formData.is_installment && (
+                                   <div className="flex items-center gap-2 mt-1">
+                                      <Input type="number" className="h-7 w-16" value={formData.installments_count} onChange={e => setFormData({...formData, installments_count: Number(e.target.value)})} />
+                                      <span className="text-xs text-muted-foreground">x</span>
+                                   </div>
+                                )}
+                            </div>
+                            <Switch checked={formData.is_installment} onCheckedChange={v => setFormData({...formData, is_installment: v})} />
+                        </div>
+                     )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Observação</Label>
+                    <Input value={formData.observation} onChange={e => setFormData({...formData, observation: e.target.value})} placeholder="Detalhes..." />
+                  </div>
+
+                  <Button size="lg" className="w-full font-bold" onClick={handleSave}>
+                    {editingId ? "Salvar Alterações" : "Confirmar Lançamento"}
+                  </Button>
+
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 items-center bg-card p-4 rounded-lg border border-border shadow-sm">
-          <div className="relative w-full sm:w-96"><Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" /><Input placeholder="Buscar..." className="pl-8" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} /></div>
-          <div className="flex gap-2 w-full sm:w-auto overflow-x-auto">
-            <Button variant={typeFilter === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('all')}>Todas</Button>
-            <Button variant={typeFilter === 'income' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('income')}>Receitas</Button>
-            <Button variant={typeFilter === 'expense' ? 'default' : 'outline'} size="sm" onClick={() => setTypeFilter('expense')}>Despesas</Button>
-          </div>
-        </div>
+        {/* --- LISTAGEM DE EXTRATO --- */}
+        <div className="space-y-6">
+            {Object.keys(groupedTransactions).sort((a,b) => new Date(b).getTime() - new Date(a).getTime()).map(date => (
+                <div key={date} className="space-y-2 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="flex items-center gap-3 px-1">
+                        <Badge variant="secondary" className="uppercase text-[10px] font-bold tracking-wider text-muted-foreground bg-muted/50">
+                            {formatDateHeader(date)}
+                        </Badge>
+                        <div className="h-[1px] flex-1 bg-border/50"></div>
+                    </div>
+                    
+                    <Card className="overflow-hidden border-none shadow-sm bg-card">
+                        <div className="divide-y">
+                            {groupedTransactions[date].map((t: Transaction) => (
+                                <div key={t.id} className="flex items-center justify-between p-4 hover:bg-muted/40 transition-colors group cursor-pointer" onClick={() => { setEditingId(t.id); setIsSheetOpen(true); }}>
+                                    
+                                    <div className="flex items-center gap-4">
+                                        <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${t.type === 'income' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                            {t.type === 'income' ? <ArrowUpCircle className="h-6 w-6" /> : <ArrowDownCircle className="h-6 w-6" />}
+                                        </div>
+                                        
+                                        <div className="flex flex-col">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium text-sm text-foreground line-clamp-1">{t.description}</span>
+                                                {t.installment_number && (
+                                                    <Badge variant="outline" className="text-[9px] h-4 px-1 text-muted-foreground border-muted-foreground/30">
+                                                        {t.installment_number}/{t.installment_total}
+                                                    </Badge>
+                                                )}
+                                                {t.is_fixed && <Badge variant="secondary" className="text-[9px] h-4 px-1">Fixa</Badge>}
+                                            </div>
+                                            
+                                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/50">
+                                                    <Tag className="h-3 w-3" /> {t.categories?.name || 'Geral'}
+                                                </span>
+                                                <span>•</span>
+                                                <span className="flex items-center gap-1 capitalize">
+                                                    {t.payment_method === 'credit' ? <CreditCard className="h-3 w-3" /> : <Wallet className="h-3 w-3" />}
+                                                    {t.payment_method === 'credit' ? t.credit_cards?.name : t.accounts?.name}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
 
-        <div className="rounded-md border border-border bg-card shadow-sm overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/50">
-                <TableHead className="w-[40px] text-center"><Checkbox checked={rawTransactions.length > 0 && selectedIds.length === rawTransactions.length} onCheckedChange={(checked) => handleSelectAll(checked as boolean)} /></TableHead>
-                <TableHead className="w-[100px]">Data</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead className="hidden md:table-cell">Categoria</TableHead>
-                <TableHead className="hidden md:table-cell">Conta</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-                <TableHead className="text-center">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? ( <TableRow><TableCell colSpan={8} className="h-24 text-center">Carregando...</TableCell></TableRow> ) : groupedTransactions.length === 0 ? ( <TableRow><TableCell colSpan={8} className="h-24 text-center">Nenhuma transação.</TableCell></TableRow> ) : (
-                groupedTransactions.map((group, index) => (
-                  <>
-                    <TableRow key={group.main.id} className={`group hover:bg-muted/30 ${selectedIds.includes(group.main.id) ? 'bg-primary/5' : ''}`}>
-                      <TableCell className="text-center"><Checkbox checked={selectedIds.includes(group.main.id)} onCheckedChange={(checked) => handleSelectOne(group.main.id, checked as boolean)} /></TableCell>
-                      <TableCell className="font-medium">{format(fixDate(group.main.date), 'dd/MM/yy', { locale: ptBR })}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {group.subTransactions.length > 0 && (
-                             <Button variant="ghost" size="icon" className="h-5 w-5 p-0 text-muted-foreground" onClick={() => toggleExpand(group.main.installment_group_id!)}>
-                                {group.isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                             </Button>
-                          )}
-                          <div className="flex flex-col">
-                            <span className="flex items-center gap-2">
-                               {group.main.description} 
-                               {group.main.is_fixed && <Badge variant="outline" className="text-[9px] h-4 px-1 border-blue-300 text-blue-600 bg-blue-50">Fixa</Badge>}
-                               {group.main.description.match(/\(\d+\/\d+\)/) && (<Badge variant="outline" className="text-[9px] h-4 px-1 border-purple-200 text-purple-600">Parcela</Badge>)}
-                            </span>
-                            <span className="md:hidden text-xs text-muted-foreground">{group.main.categories?.name || 'Geral'}</span>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell"><Badge variant="secondary" style={{backgroundColor: group.main.categories?.color ? group.main.categories.color + '20' : undefined, color: group.main.categories?.color }}>{group.main.categories?.name || 'Geral'}</Badge></TableCell>
-                      <TableCell className="hidden md:table-cell text-muted-foreground text-sm">{group.main.accounts?.name || '-'}</TableCell>
-                      <TableCell className={`text-right font-bold ${group.main.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>{Number(group.main.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
-                      
-                      <TableCell className="text-center">
-                         {group.main.type === 'expense' && (
-                             <Button variant="ghost" size="sm" className={`h-6 px-2 gap-1 ${group.main.is_paid ? "text-green-600 bg-green-50 hover:bg-green-100" : "text-muted-foreground hover:bg-muted"}`} onClick={(e) => handleTogglePaid(e, group.main.id, !!group.main.is_paid)}>
-                                {group.main.is_paid ? <CheckCircle className="h-4 w-4" /> : <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />}
-                             </Button>
-                         )}
-                      </TableCell>
-
-                      <TableCell className="text-center">
-                        <div className="flex justify-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(group.main)}><Pencil className="h-4 w-4 text-blue-500" /></Button>
-                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(group.main.id)}><Trash2 className="h-4 w-4 text-red-500" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-
-                    {group.isExpanded && group.subTransactions.map((subT) => {
-                        if(subT.id === group.main.id) return null; 
-                        return (
-                            <TableRow key={subT.id} className="bg-muted/10 hover:bg-muted/20 text-sm">
-                                <TableCell></TableCell>
-                                <TableCell className="font-medium pl-8 text-muted-foreground">{format(fixDate(subT.date), 'dd/MM/yy', { locale: ptBR })}</TableCell>
-                                <TableCell className="text-muted-foreground pl-8 flex items-center gap-2">
-                                    {subT.description}
-                                    {subT.description.match(/\(\d+\/\d+\)/) && (<Badge variant="outline" className="text-[8px] h-3 px-1 text-muted-foreground border-muted-foreground/30">Futura</Badge>)}
-                                </TableCell>
-                                <TableCell></TableCell>
-                                <TableCell></TableCell>
-                                <TableCell className="text-right text-muted-foreground">{Number(subT.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</TableCell>
-                                <TableCell className="text-center">
-                                    {subT.type === 'expense' && (
-                                        <Button variant="ghost" size="sm" className={`h-6 px-2 ${subT.is_paid ? "text-green-600" : "text-muted-foreground"}`} onClick={(e) => handleTogglePaid(e, subT.id, !!subT.is_paid)}>
-                                            {subT.is_paid ? <CheckCircle className="h-3 w-3" /> : <div className="h-3 w-3 rounded-full border border-muted-foreground/30" />}
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-right">
+                                            <div className={`font-bold text-sm ${t.type === 'income' ? 'text-green-600' : 'text-foreground'}`}>
+                                                {t.type === 'expense' ? '- ' : '+ '}
+                                                {Number(t.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            </div>
+                                            <div 
+                                                className={`text-xs flex items-center justify-end gap-1 mt-1 cursor-pointer transition-colors ${t.is_paid ? 'text-green-600' : 'text-amber-600 hover:text-amber-700'}`}
+                                                onClick={(e) => { e.stopPropagation(); handleTogglePaid(t.id, t.is_paid); }}
+                                            >
+                                                {t.is_paid ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                                                {t.is_paid ? "Pago" : "Pendente"}
+                                            </div>
+                                        </div>
+                                        
+                                        <Button 
+                                            variant="ghost" size="icon" 
+                                            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                            onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                                        >
+                                            <Trash2 className="h-4 w-4" />
                                         </Button>
-                                    )}
-                                </TableCell>
-                                <TableCell className="text-center">
-                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDelete(subT.id)}><Trash2 className="h-3 w-3 text-red-400" /></Button>
-                                </TableCell>
-                            </TableRow>
-                        )
-                    })}
-                  </>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                                    </div>
+
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                </div>
+            ))}
+            
+            {transactions.length === 0 && !loading && (
+                <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                    <div className="bg-muted p-4 rounded-full mb-4">
+                        <Filter className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <h3 className="text-lg font-medium">Nenhum lançamento encontrado</h3>
+                    <p className="text-sm text-muted-foreground max-w-xs mx-auto mt-1">
+                        Tente mudar o mês no filtro acima ou adicione uma nova transação.
+                    </p>
+                </div>
+            )}
         </div>
       </div>
     </DashboardLayout>
