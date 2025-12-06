@@ -11,13 +11,16 @@ import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from "@/components/ui/sheet";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
-  Plus, Search, Trash2, Pencil, Calendar as CalendarIcon, 
+  Plus, Search, Trash2, Calendar as CalendarIcon, 
   ArrowUpCircle, ArrowDownCircle, CreditCard, Wallet, CheckCircle2, Clock, 
   Tag, Filter
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfMonth, endOfMonth, parseISO, isToday, isYesterday, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 type Transaction = {
   id: string;
@@ -53,8 +56,11 @@ export default function TransactionsPage() {
   const [cards, setCards] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
+  // CORREÇÃO 1: Inicializar com data local para evitar erro de fuso horário
   const [formData, setFormData] = useState({
-    description: "", amount: "", date: new Date().toISOString().split('T')[0],
+    description: "", 
+    amount: "", 
+    date: format(new Date(), 'yyyy-MM-dd'),
     type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
     observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
   });
@@ -71,7 +77,7 @@ export default function TransactionsPage() {
           description: tx.description,
           amount: String(tx.amount),
           date: tx.date,
-          type: tx.type,
+          type: tx.type as any,
           category_id: tx.category_id || "",
           account_id: tx.account_id || "",
           card_id: tx.card_id || "",
@@ -84,8 +90,9 @@ export default function TransactionsPage() {
         });
       }
     } else {
+      // CORREÇÃO 1: Resetar também com data local
       setFormData({
-        description: "", amount: "", date: new Date().toISOString().split('T')[0],
+        description: "", amount: "", date: format(new Date(), 'yyyy-MM-dd'),
         type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
         observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
       });
@@ -97,7 +104,6 @@ export default function TransactionsPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // CORREÇÃO AQUI: Usando strings de data simples para evitar erros de Fuso Horário
     const start = format(startOfMonth(month), 'yyyy-MM-dd');
     const end = format(endOfMonth(month), 'yyyy-MM-dd');
 
@@ -113,7 +119,7 @@ export default function TransactionsPage() {
       supabase.from('categories').select('*').order('name')
     ]);
 
-    if (transRes.data) setTransactions(transRes.data);
+    if (transRes.data) setTransactions(transRes.data as any);
     if (accRes.data) setAccounts(accRes.data);
     if (cardRes.data) setCards(cardRes.data);
     if (catRes.data) setCategories(catRes.data);
@@ -204,29 +210,9 @@ export default function TransactionsPage() {
   const openNew = () => {
     setEditingId(null);
     setFormData({
-      description: "", amount: "", date: new Date().toISOString().split('T')[0],
+      description: "", amount: "", date: format(new Date(), 'yyyy-MM-dd'),
       type: "expense", category_id: "", account_id: "", card_id: "", payment_method: "debit",
       observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
-    });
-    setIsSheetOpen(true);
-  };
-
-  const openEdit = (t: Transaction) => {
-    setEditingId(t.id);
-    setFormData({
-      description: t.description,
-      amount: String(t.amount),
-      date: t.date,
-      type: t.type,
-      category_id: t.category_id || "",
-      account_id: t.account_id || "",
-      card_id: t.card_id || "",
-      payment_method: t.payment_method || "debit",
-      observation: t.observation || "",
-      is_paid: t.is_paid,
-      is_fixed: t.is_fixed,
-      is_installment: false,
-      installments_count: 2
     });
     setIsSheetOpen(true);
   };
@@ -303,9 +289,36 @@ export default function TransactionsPage() {
                         <Input type="number" className="pl-10 text-lg font-bold" placeholder="0,00" value={formData.amount} onChange={e => setFormData({...formData, amount: e.target.value})} />
                       </div>
                     </div>
-                    <div className="space-y-2">
+                    
+                    {/* CORREÇÃO 2: Substituição do Input type=date pelo Calendário Shadcn */}
+                    <div className="space-y-2 flex flex-col">
                       <Label>Data</Label>
-                      <Input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full pl-3 text-left font-normal",
+                              !formData.date && "text-muted-foreground"
+                            )}
+                          >
+                            {formData.date ? (
+                              format(parseISO(formData.date), "PPP", { locale: ptBR })
+                            ) : (
+                              <span>Selecione uma data</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={formData.date ? parseISO(formData.date) : undefined}
+                            onSelect={(date) => date && setFormData({ ...formData, date: format(date, "yyyy-MM-dd") })}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   </div>
 
