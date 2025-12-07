@@ -852,6 +852,7 @@ function formatDateHeader(dateStr: string) {
     const d = new Date(dateStr);
     if (isToday(d)) return "Hoje";
     if (isYesterday(d)) return "Ontem";
+
     return format(d, "EEEE, d 'de' MMMM", { locale: ptBR });
   } catch {
     return dateStr;
