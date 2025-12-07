@@ -40,6 +40,8 @@ type Transaction = {
   categories?: { name: string, color: string };
   accounts?: { name: string };
   credit_cards?: { name: string };
+  // possível campo extra para parcelamento
+  installment_id?: string;
 };
 
 export default function TransactionsPage() {
@@ -57,7 +59,7 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<any[]>([]);
 
   // Inicializa o formulário com a data de HOJE (YYYY-MM-DD)
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<any>({
     description: "", 
     amount: "", 
     date: format(new Date(), 'yyyy-MM-dd'), 
@@ -74,14 +76,27 @@ export default function TransactionsPage() {
     if (editingId) {
       const tx = transactions.find(t => t.id === editingId);
       if (tx) {
+        // tx.date pode ser 'YYYY-MM-DD' ou ISO 'YYYY-MM-DDTHH:MM:SSZ'
+        let dateToSet = tx.date;
+        if (tx.date.includes('T')) {
+          try {
+            dateToSet = format(parseISO(tx.date), 'yyyy-MM-dd');
+          } catch (e) {
+            // se parse falhar, tenta pegar substring
+            dateToSet = tx.date.substring(0, 10);
+          }
+        } else {
+          dateToSet = tx.date.substring(0, 10);
+        }
+
         setFormData({
           description: tx.description,
           amount: String(tx.amount),
-          date: tx.date,
+          date: dateToSet,
           type: tx.type as any,
-          category_id: tx.category_id || "",
-          account_id: tx.account_id || "",
-          card_id: tx.card_id || "",
+          category_id: (tx as any).category_id || "",
+          account_id: (tx as any).account_id || "",
+          card_id: (tx as any).card_id || "",
           payment_method: tx.payment_method || "debit",
           observation: tx.observation || "",
           is_paid: tx.is_paid,
@@ -97,37 +112,68 @@ export default function TransactionsPage() {
         observation: "", is_paid: true, is_fixed: false, is_installment: false, installments_count: 2
       });
     }
-  }, [editingId, isSheetOpen]);
+  }, [editingId, isSheetOpen, transactions]);
 
   const fetchAllData = async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    // --- CORREÇÃO DO FILTRO ---
-    // start: Início do dia 01 (ex: 2023-10-01 00:00:00)
-    const start = startOfMonth(month).toISOString();
-    // end: Fim do último dia (ex: 2023-10-31 23:59:59.999)
-    const end = endOfMonth(month).toISOString();
+    // Tenta buscar por intervalo ISO (mais eficiente)
+    const startISO = startOfMonth(month).toISOString();
+    const endISO = endOfMonth(month).toISOString();
 
-    const [transRes, accRes, cardRes, catRes] = await Promise.all([
-      supabase.from('transactions')
-        .select(`*, categories(name, color), accounts(name), credit_cards(name)`)
-        .eq('user_id', user.id)
-        .gte('date', start) // Maior ou igual ao início do mês
-        .lte('date', end)   // Menor ou igual ao FIM ABSOLUTO do mês
-        .order('date', { ascending: false }),
-      supabase.from('accounts').select('*'),
-      supabase.from('credit_cards').select('*'),
-      supabase.from('categories').select('*').order('name')
-    ]);
+    try {
+      const [transRes, accRes, cardRes, catRes] = await Promise.all([
+        supabase.from('transactions')
+          .select(`*, categories(name, color), accounts(name), credit_cards(name)`)
+          .eq('user_id', user.id)
+          .gte('date', startISO)
+          .lte('date', endISO)
+          .order('date', { ascending: false }),
+        supabase.from('accounts').select('*').eq('user_id', user.id),
+        supabase.from('credit_cards').select('*').eq('user_id', user.id),
+        supabase.from('categories').select('*').order('name')
+      ]);
 
-    if (transRes.data) setTransactions(transRes.data as any);
-    if (accRes.data) setAccounts(accRes.data);
-    if (cardRes.data) setCards(cardRes.data);
-    if (catRes.data) setCategories(catRes.data);
-    
-    setLoading(false);
+      // Se voltou com dados, usa direto
+      if (transRes && Array.isArray(transRes.data) && transRes.data.length > 0) {
+        setTransactions(transRes.data as any);
+      } else {
+        // fallback: o banco pode ter a coluna como DATE (sem hora), então a query acima pode não achar
+        // então buscamos TODAS as transações do usuário e filtramos localmente pelo mês selecionado
+        const allRes = await supabase.from('transactions')
+          .select(`*, categories(name, color), accounts(name), credit_cards(name)`)
+          .eq('user_id', user.id)
+          .order('date', { ascending: false });
+        if (allRes && Array.isArray(allRes.data)) {
+          // filtra localmente por mês/ano
+          const filtered = allRes.data.filter((t: any) => {
+            if (!t.date) return false;
+            // extrai yyyy-mm-dd (primeiros 10 chars)
+            const dateKey = String(t.date).substring(0, 10);
+            const [y, m] = dateKey.split('-').map(Number);
+            if (!y || !m) return false;
+            return (y === month.getFullYear() && (m === month.getMonth() + 1));
+          });
+          setTransactions(filtered as any);
+        } else {
+          setTransactions([]);
+        }
+      }
+
+      if (accRes.data) setAccounts(accRes.data);
+      if (cardRes.data) setCards(cardRes.data);
+      if (catRes.data) setCategories(catRes.data);
+    } catch (err: any) {
+      console.error("Erro ao buscar dados", err);
+      toast({ title: "Erro ao buscar dados", description: err?.message || String(err), variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -139,12 +185,29 @@ export default function TransactionsPage() {
       return;
     }
 
-    const basePayload = {
+    // garante que a data enviada pro banco seja ISO (timestamp)
+    const normalizedDate = (() => {
+      try {
+        // se formData.date já tiver hora, parseISO; senão monta uma Date a partir do yyyy-mm-dd
+        if (String(formData.date).includes('T')) {
+          return new Date(formData.date).toISOString();
+        } else {
+          // formData.date no formato yyyy-mm-dd
+          const [y, m, d] = String(formData.date).split('-').map(Number);
+          const dt = new Date(y, m - 1, d, 0, 0, 0);
+          return dt.toISOString();
+        }
+      } catch {
+        return new Date().toISOString();
+      }
+    })();
+
+    const basePayload: any = {
       user_id: user.id,
       description: formData.description,
       amount: Number(formData.amount),
       type: formData.type,
-      date: formData.date,
+      date: normalizedDate,
       category_id: formData.category_id || null,
       account_id: formData.payment_method === 'credit' ? null : (formData.account_id || null),
       card_id: formData.payment_method === 'credit' ? (formData.card_id || null) : null,
@@ -161,23 +224,23 @@ export default function TransactionsPage() {
         if (error) throw error;
       } else {
         if (formData.is_installment && formData.type === 'expense') {
-          const batch = [];
+          const batch: any[] = [];
           const groupId = crypto.randomUUID();
           
-          // Correção da data para parcelas
-          const [year, month, day] = formData.date.split('-').map(Number);
-          const initialDate = new Date(year, month - 1, day);
+          // Correção da data para parcelas: parte do formData.date (yyyy-mm-dd)
+          const [year, monthNum, day] = String(formData.date).split('-').map(Number);
+          const initialDate = new Date(year, monthNum - 1, day);
           
-          for (let i = 0; i < formData.installments_count; i++) {
+          for (let i = 0; i < Number(formData.installments_count); i++) {
             const nextDate = new Date(initialDate);
             nextDate.setMonth(nextDate.getMonth() + i);
-            
+            // converte pra ISO antes de inserir
             batch.push({
               ...basePayload,
-              date: format(nextDate, 'yyyy-MM-dd'),
+              date: new Date(nextDate.getFullYear(), nextDate.getMonth(), nextDate.getDate(), 0, 0, 0).toISOString(),
               installment_id: groupId,
               installment_number: i + 1,
-              installment_total: formData.installments_count,
+              installment_total: Number(formData.installments_count),
               is_paid: i === 0 ? basePayload.is_paid : false
             });
           }
@@ -191,22 +254,32 @@ export default function TransactionsPage() {
 
       toast({ title: editingId ? "Atualizado com sucesso!" : "Transação criada!" });
       setIsSheetOpen(false);
+      // recarrega os dados após criação/atualização
       fetchAllData(); 
 
     } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
+      console.error("Erro ao salvar transação", err);
+      toast({ title: "Erro", description: err?.message || String(err), variant: "destructive" });
     }
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir?")) return;
-    await supabase.from('transactions').delete().eq('id', id);
-    fetchAllData();
+    try {
+      await supabase.from('transactions').delete().eq('id', id);
+      fetchAllData();
+    } catch (err: any) {
+      toast({ title: "Erro ao excluir", description: err?.message || String(err), variant: "destructive" });
+    }
   };
 
   const handleTogglePaid = async (id: string, currentStatus: boolean) => {
-    await supabase.from('transactions').update({ is_paid: !currentStatus }).eq('id', id);
-    fetchAllData();
+    try {
+      await supabase.from('transactions').update({ is_paid: !currentStatus }).eq('id', id);
+      fetchAllData();
+    } catch (err: any) {
+      toast({ title: "Erro ao atualizar", description: err?.message || String(err), variant: "destructive" });
+    }
   };
 
   const openNew = () => {
@@ -219,15 +292,16 @@ export default function TransactionsPage() {
     setIsSheetOpen(true);
   };
 
+  // Agrupamento robusto (pega os 10 primeiros chars da data, independente do formato)
   const groupedTransactions = transactions
     .filter(t => {
-      const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = t.description?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesType = typeFilter === "all" || t.type === typeFilter;
       return matchesSearch && matchesType;
     })
     .reduce((groups: any, t) => {
-      // Agrupamento por dia (YYYY-MM-DD)
-      const dateKey = t.date.split('T')[0]; 
+      const raw = String(t.date || "");
+      const dateKey = raw.substring(0, 10); // yyyy-mm-dd
       if (!groups[dateKey]) groups[dateKey] = [];
       groups[dateKey].push(t);
       return groups;
@@ -235,12 +309,16 @@ export default function TransactionsPage() {
 
   const formatDateHeader = (dateStr: string) => {
     if (!dateStr) return "Data desconhecida";
-    const [year, month, day] = dateStr.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    
-    if (isToday(date)) return "Hoje";
-    if (isYesterday(date)) return "Ontem";
-    return format(date, "EEEE, d 'de' MMMM", { locale: ptBR });
+    // dateStr já vem como yyyy-mm-dd
+    try {
+      const [year, monthStr, dayStr] = dateStr.split('-').map(Number);
+      const date = new Date(year, (monthStr || 1) - 1, dayStr || 1);
+      if (isToday(date)) return "Hoje";
+      if (isYesterday(date)) return "Ontem";
+      return format(date, "EEEE, d 'de' MMMM", { locale: ptBR });
+    } catch {
+      return dateStr;
+    }
   };
 
   return (
@@ -339,7 +417,7 @@ export default function TransactionsPage() {
                         <Select value={formData.category_id} onValueChange={v => setFormData({...formData, category_id: v})}>
                             <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                             <SelectContent>
-                                {categories.filter(c => c.type === formData.type).map(c => (
+                                {categories.filter((c:any) => c.type === formData.type).map((c:any) => (
                                     <SelectItem key={c.id} value={c.id}>
                                         <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{backgroundColor: c.color}} /> {c.name}</div>
                                     </SelectItem>
